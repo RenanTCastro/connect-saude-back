@@ -72,7 +72,7 @@ export default {
         .where({ id, user_id: userId })
         .update({ name, quantity, updated_at: db.fn.now() })
 
-      if (updated.length === 0) {
+      if (updated === 0) {
         return res.status(404).json({ error: "Item não encontrado ou sem permissão." });
       }
 
@@ -95,7 +95,7 @@ export default {
         .where({ id, user_id: userId })
         .del()
 
-      if (deleted.length === 0) {
+      if (deleted === 0) {
         return res.status(404).json({ error: "Item não encontrado ou sem permissão." });
       }
 

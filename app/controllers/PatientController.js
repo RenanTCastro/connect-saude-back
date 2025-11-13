@@ -36,7 +36,7 @@ export default {
 
       const nextPatientNumber = (lastPatient?.last_number || 0) + 1;
 
-      const [newPatient] = await db("patients")
+      await db("patients")
         .insert({
           user_id: userId,
           patient_number: nextPatientNumber,
@@ -54,10 +54,7 @@ export default {
           updated_at: db.fn.now(),
         })
 
-      return res.status(201).json({
-        message: "Paciente criado com sucesso!",
-        patient: newPatient,
-      });
+      return res.status(201).json({message: "Paciente criado com sucesso!"});
     } catch (error) {
       console.error("Erro ao criar paciente:", error);
       return res.status(500).json({

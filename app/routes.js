@@ -6,6 +6,8 @@ const authMiddleware = require("./middleware/authMiddleware");
 const UserController = require("./controllers/UserController").default;
 const PatientController = require("./controllers/PatientController").default;
 const InventoryController = require("./controllers/InventoryController").default;
+const SalesController = require("./controllers/SalesController").default;
+const LabelController = require("./controllers/LabelController").default;
 
 routes.post("/login", UserController.login); 
 routes.post("/register", UserController.register);
@@ -20,6 +22,26 @@ routes.get("/inventory", authMiddleware, InventoryController.getInventoryItems);
 routes.post("/inventory", authMiddleware, InventoryController.createInventoryItem);
 routes.put("/inventory/:id", authMiddleware, InventoryController.updateInventoryItem);
 routes.delete("/inventory/:id", authMiddleware, InventoryController.deleteInventoryItem);
+
+routes.get("/sales/stages", authMiddleware, SalesController.getSalesStages);
+routes.post("/sales/stages", authMiddleware, SalesController.createSalesStage);
+routes.put("/sales/stages/:id", authMiddleware, SalesController.updateSalesStage);
+routes.delete("/sales/stages/:id", authMiddleware, SalesController.deleteSalesStage);
+
+routes.get("/sales/opportunities", authMiddleware, SalesController.getSalesOpportunities);
+routes.get("/sales/opportunities/:id", authMiddleware, SalesController.getSalesOpportunityById);
+routes.post("/sales/opportunities", authMiddleware, SalesController.createSalesOpportunity);
+routes.put("/sales/opportunities/:id", authMiddleware, SalesController.updateSalesOpportunity);
+routes.delete("/sales/opportunities/:id", authMiddleware, SalesController.deleteSalesOpportunity);
+
+routes.get("/sales/opportunities/:opportunity_id/notes", authMiddleware, SalesController.getSalesNotes);
+routes.post("/sales/notes", authMiddleware, SalesController.createSalesNote);
+routes.put("/sales/notes/:id", authMiddleware, SalesController.updateSalesNote);
+routes.delete("/sales/notes/:id", authMiddleware, SalesController.deleteSalesNote);
+
+routes.get("/labels", authMiddleware, LabelController.getLabels);
+routes.post("/labels", authMiddleware, LabelController.createLabel);
+routes.delete("/labels/:id", authMiddleware, LabelController.deleteLabel);
 
 routes.get("/test_auth_middleware", authMiddleware, (req, res) => {
   res.json({ message: "Acesso autorizado!", user: req.user });

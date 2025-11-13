@@ -1,7 +1,7 @@
 exports.up = function(knex) {
   return knex.schema.createTable('appointment_reminders', table => {
     table.increments('id').primary();
-    table.integer('appointment_id').unsigned().notNullable().references('id').inTable('appointments');
+    table.integer('appointment_id').notNullable().references('id').inTable('appointments');
     table.dateTime('send_at').notNullable()
     table.dateTime('sent_at').nullable()
     table.string('status', 50).defaultTo('pending')
