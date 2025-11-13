@@ -1,4 +1,10 @@
 import db from "../database/index.js";
+import dayjs from "dayjs";
+import utc from "dayjs/plugin/utc.js";
+import timezone from "dayjs/plugin/timezone.js";
+
+dayjs.extend(utc);
+dayjs.extend(timezone);
 
 export default {
   async createSalesStage(req, res) {
@@ -203,19 +209,33 @@ export default {
         }
       }
 
-      await db("sales_opportunities").insert({
-        user_id: userId,
-        patient_id: patient_id || null,
-        stage_id,
-        title,
-        description: description || null,
-        estimated_value: estimated_value || null,
-        label: label || null,
-        contact_date: contact_date || null,
-        next_action_date: next_action_date || null,
-        created_at: db.fn.now(),
-        updated_at: db.fn.now(),
-      });
+      const [insertedOpportunity] = await db("sales_opportunities")
+        .insert({
+          user_id: userId,
+          patient_id: patient_id || null,
+          stage_id,
+          title,
+          description: description || null,
+          estimated_value: estimated_value || null,
+          label: label || null,
+          contact_date: contact_date || null,
+          next_action_date: next_action_date || null,
+          created_at: db.fn.now(),
+          updated_at: db.fn.now(),
+        })
+        .returning("id");
+
+      // Criar nota automática de criação
+      if (insertedOpportunity && insertedOpportunity.id) {
+        const now = dayjs().tz("America/Sao_Paulo");
+        const formattedDate = now.format("DD/MM/YYYY [às] HH:mm");
+        await db("sales_notes").insert({
+          opportunity_id: insertedOpportunity.id,
+          user_id: userId,
+          content: `Oportunidade criada em ${formattedDate}`,
+          created_at: db.fn.now(),
+        });
+      }
 
       return res.status(201).json({ message: "Oportunidade de venda criada com sucesso!" });
     } catch (error) {
@@ -390,6 +410,28 @@ export default {
       if (contact_date !== undefined) updateData.contact_date = contact_date;
       if (next_action_date !== undefined) updateData.next_action_date = next_action_date;
       updateData.updated_at = db.fn.now();
+
+      // Verificar se o estágio mudou para criar nota automática
+      if (stage_id !== undefined && stage_id !== opportunity.stage_id) {
+        const oldStage = await db("sales_stages")
+          .where({ id: opportunity.stage_id, user_id: userId })
+          .first();
+        
+        const newStage = await db("sales_stages")
+          .where({ id: stage_id, user_id: userId })
+          .first();
+
+        if (oldStage && newStage) {
+          const now = dayjs().tz("America/Sao_Paulo");
+          const formattedDate = now.format("DD/MM/YYYY [às] HH:mm");
+          await db("sales_notes").insert({
+            opportunity_id: id,
+            user_id: userId,
+            content: `Oportunidade movida de "${oldStage.name}" para "${newStage.name}" em ${formattedDate}`,
+            created_at: db.fn.now(),
+          });
+        }
+      }
 
       await db("sales_opportunities")
         .where({ id, user_id: userId })
