@@ -8,6 +8,7 @@ const PatientController = require("./controllers/PatientController").default;
 const InventoryController = require("./controllers/InventoryController").default;
 const SalesController = require("./controllers/SalesController").default;
 const LabelController = require("./controllers/LabelController").default;
+const AppointmentController = require("./controllers/AppointmentController").default;
 
 routes.post("/login", UserController.login); 
 routes.post("/register", UserController.register);
@@ -42,6 +43,12 @@ routes.delete("/sales/notes/:id", authMiddleware, SalesController.deleteSalesNot
 routes.get("/labels", authMiddleware, LabelController.getLabels);
 routes.post("/labels", authMiddleware, LabelController.createLabel);
 routes.delete("/labels/:id", authMiddleware, LabelController.deleteLabel);
+
+routes.get("/appointments", authMiddleware, AppointmentController.getAppointments);
+routes.get("/appointments/:id", authMiddleware, AppointmentController.getAppointmentById);
+routes.post("/appointments", authMiddleware, AppointmentController.createAppointment);
+routes.put("/appointments/:id", authMiddleware, AppointmentController.updateAppointment);
+routes.delete("/appointments/:id", authMiddleware, AppointmentController.deleteAppointment);
 
 routes.get("/test_auth_middleware", authMiddleware, (req, res) => {
   res.json({ message: "Acesso autorizado!", user: req.user });

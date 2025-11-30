@@ -3,7 +3,9 @@
  * @returns { Promise<void> }
  */
 exports.up = function(knex) {
-  return Promise.resolve();
+  return knex.schema.table('labels', table => {
+    table.string('context', 50).defaultTo('sales');
+  });
 };
 
 /**
@@ -11,5 +13,7 @@ exports.up = function(knex) {
  * @returns { Promise<void> }
  */
 exports.down = function(knex) {
-  return Promise.resolve();
+  return knex.schema.table('labels', table => {
+    table.dropColumn('context');
+  });
 };

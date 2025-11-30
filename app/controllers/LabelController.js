@@ -3,7 +3,7 @@ import db from "../database/index.js";
 export default {
   async createLabel(req, res) {
     try {
-      const { name, color, icon, description, is_active } = req.body;
+      const { name, color, icon, description, is_active, context } = req.body;
       const userId = req.user.user_id;
 
       if (!name) {
@@ -18,6 +18,7 @@ export default {
         color: color || null,
         icon: icon || null,
         description: description || null,
+        context: context || null,
         is_active: is_active !== undefined ? is_active : true,
         created_at: db.fn.now(),
         updated_at: db.fn.now(),
