@@ -18,5 +18,18 @@ module.exports = {
       min: 2,
       max: 10
     }
+  },
+  production: {
+    client: "pg",
+    connection: process.env.DATABASE_URL || process.env.DB_URI,
+    migrations: {
+      tableName: "knex_migrations",
+      directory: `${__dirname}/app/database/migrations`,
+    },
+    pool: {
+      min: 2,
+      max: 10
+    },
+    ssl: process.env.DB_SSL === 'true' ? { rejectUnauthorized: false } : false
   }
 };
