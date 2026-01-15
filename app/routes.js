@@ -9,12 +9,14 @@ const InventoryController = require("./controllers/InventoryController").default
 const SalesController = require("./controllers/SalesController").default;
 const LabelController = require("./controllers/LabelController").default;
 const AppointmentController = require("./controllers/AppointmentController").default;
+const CashFlowController = require("./controllers/CashFlowController").default;
 
 routes.post("/login", UserController.login); 
 routes.post("/register", UserController.register);
 
 routes.get("/patients", authMiddleware, PatientController.getPatients);
 routes.get("/patients/:id", authMiddleware, PatientController.getPatientById);
+routes.get("/patients/:id/invoices", authMiddleware, PatientController.getPatientInvoices);
 routes.post("/patients", authMiddleware, PatientController.createPatient);
 routes.put("/patients/:id", authMiddleware, PatientController.updatePatient);
 routes.delete("/patients/:id", authMiddleware, PatientController.deletePatient);
@@ -49,6 +51,12 @@ routes.get("/appointments/:id", authMiddleware, AppointmentController.getAppoint
 routes.post("/appointments", authMiddleware, AppointmentController.createAppointment);
 routes.put("/appointments/:id", authMiddleware, AppointmentController.updateAppointment);
 routes.delete("/appointments/:id", authMiddleware, AppointmentController.deleteAppointment);
+
+routes.get("/cashflow/period", authMiddleware, CashFlowController.getPeriodData);
+routes.post("/cashflow/income", authMiddleware, CashFlowController.createIncome);
+routes.post("/cashflow/expense", authMiddleware, CashFlowController.createExpense);
+routes.get("/cashflow/receivables", authMiddleware, CashFlowController.getReceivables);
+routes.put("/cashflow/installments/:id/pay", authMiddleware, CashFlowController.markInstallmentAsPaid);
 
 routes.get("/test_auth_middleware", authMiddleware, (req, res) => {
   res.json({ message: "Acesso autorizado!", user: req.user });
