@@ -9,6 +9,11 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 
 app.use(cors());
+
+// Webhook do Stripe precisa de raw body
+app.use("/subscription/webhook", express.raw({ type: "application/json" }));
+
+// Demais rotas usam JSON
 app.use(express.json());
 
 app.use("/", routes);

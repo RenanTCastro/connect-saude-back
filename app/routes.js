@@ -10,6 +10,7 @@ const SalesController = require("./controllers/SalesController").default;
 const LabelController = require("./controllers/LabelController").default;
 const AppointmentController = require("./controllers/AppointmentController").default;
 const CashFlowController = require("./controllers/CashFlowController").default;
+const SubscriptionController = require("./controllers/SubscriptionController").default;
 
 routes.post("/login", UserController.login); 
 routes.post("/register", UserController.register);
@@ -61,5 +62,13 @@ routes.put("/cashflow/installments/:id/pay", authMiddleware, CashFlowController.
 routes.get("/test_auth_middleware", authMiddleware, (req, res) => {
   res.json({ message: "Acesso autorizado!", user: req.user });
 });
+
+// Rotas de subscription
+routes.post("/subscription/checkout", authMiddleware, SubscriptionController.createCheckoutSession);
+routes.get("/subscription/status", authMiddleware, SubscriptionController.getSubscriptionStatus);
+routes.post("/subscription/cancel", authMiddleware, SubscriptionController.cancelSubscription);
+routes.post("/subscription/reactivate", authMiddleware, SubscriptionController.reactivateSubscription);
+// Webhook do Stripe (sem autenticação, usa assinatura do Stripe)
+routes.post("/subscription/webhook", SubscriptionController.handleWebhook);
 
 module.exports = routes;
