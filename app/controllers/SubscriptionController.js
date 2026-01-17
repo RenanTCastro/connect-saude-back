@@ -45,6 +45,39 @@ const calculatePeriodEnd = (startTimestamp, interval, intervalCount) => {
 
 // Função auxiliar para obter datas de período da subscription
 const getSubscriptionPeriodDates = (subscription) => {
+  // Se está em trial, usar trial_start e trial_end (7 dias)
+  if (subscription.status === "trialing") {
+    // Prioridade: usar trial_end que tem exatamente 7 dias
+    if (subscription.trial_end) {
+      const trialStart = subscription.trial_start || subscription.current_period_start || subscription.created;
+      return {
+        start: stripeTimestampToDate(trialStart),
+        end: stripeTimestampToDate(subscription.trial_end),
+      };
+    }
+    // Fallback: calcular 7 dias a partir de trial_start
+    if (subscription.trial_start) {
+      const startDate = stripeTimestampToDate(subscription.trial_start);
+      const endDate = new Date(startDate);
+      endDate.setDate(endDate.getDate() + 7); // 7 dias de trial
+      return {
+        start: startDate,
+        end: endDate,
+      };
+    }
+    // Último fallback: calcular 7 dias a partir de created/current_period_start
+    const startTimestamp = subscription.current_period_start || subscription.created;
+    if (startTimestamp) {
+      const startDate = stripeTimestampToDate(startTimestamp);
+      const endDate = new Date(startDate);
+      endDate.setDate(endDate.getDate() + 7); // 7 dias de trial
+      return {
+        start: startDate,
+        end: endDate,
+      };
+    }
+  }
+  
   // Tentar usar current_period_start e current_period_end (campos padrão do Stripe)
   if (subscription.current_period_start && subscription.current_period_end) {
     return {
@@ -107,8 +140,11 @@ export default {
           .update({ stripe_customer_id: customerId });
       }
 
+      // Verificar se o usuário já teve assinatura antes (para não dar trial novamente)
+      const hasHadSubscription = !!user.subscription_id;
+      
       // Criar sessão de checkout
-      const session = await stripe.checkout.sessions.create({
+      const sessionConfig = {
         customer: customerId,
         mode: "subscription",
         payment_method_types: ["card"],
@@ -123,7 +159,16 @@ export default {
         metadata: {
           user_id: userId.toString(),
         },
-      });
+      };
+
+      // Adicionar trial de 7 dias apenas se o usuário nunca teve assinatura
+      if (!hasHadSubscription) {
+        sessionConfig.subscription_data = {
+          trial_period_days: 7, // 1 semana de teste grátis
+        };
+      }
+
+      const session = await stripe.checkout.sessions.create(sessionConfig);
 
       return res.json({ url: session.url });
     } catch (error) {
@@ -157,31 +202,39 @@ export default {
 
       // Se não tem customer_id, ainda não tem assinatura
       if (!user.stripe_customer_id) {
-        return res.json({
-          hasSubscription: false,
-          status: "inactive",
-          subscriptionId: null,
-          startDate: null,
-          endDate: null,
-        });
+      return res.json({
+        hasSubscription: false,
+        status: "inactive",
+        subscriptionId: null,
+        startDate: null,
+        endDate: null,
+        isTrialing: false,
+        hasAccess: false,
+      });
       }
 
       let cancelAtPeriodEnd = false;
+      let subscription = null;
       
       // Se tem subscription_id, buscar dados atualizados do Stripe
       if (user.subscription_id) {
         try {
-          const subscription = await stripe.subscriptions.retrieve(
+          subscription = await stripe.subscriptions.retrieve(
             user.subscription_id
           );
 
           // Armazenar cancel_at_period_end para retornar
           cancelAtPeriodEnd = subscription.cancel_at_period_end || false;
 
-          // Atualizar status no banco se mudou
-          if (subscription.status !== user.subscription_status) {
-            const { start: startDate, end: endDate } = getSubscriptionPeriodDates(subscription);
-            
+          // Verificar se está em trial (status 'trialing' do Stripe)
+          const isTrialing = subscription.status === "trialing";
+          
+          // Calcular datas corretas do período
+          const { start: startDate, end: endDate } = getSubscriptionPeriodDates(subscription);
+
+          // Se está em trial ou se o status mudou, atualizar no banco
+          // Durante trial, sempre recalcular para garantir que usa trial_end (7 dias) e não current_period_end (1 mês)
+          if (isTrialing || subscription.status !== user.subscription_status) {
             await db("users")
               .where({ id: userId })
               .update({
@@ -193,6 +246,10 @@ export default {
             user.subscription_status = subscription.status;
             user.subscription_start_date = startDate;
             user.subscription_end_date = endDate;
+          } else if (subscription.status === user.subscription_status) {
+            // Mesmo que status não mudou, usar datas do Stripe para garantir precisão
+            user.subscription_start_date = startDate;
+            user.subscription_end_date = endDate;
           }
         } catch (stripeError) {
           console.error("Erro ao buscar assinatura no Stripe:", stripeError);
@@ -200,13 +257,42 @@ export default {
         }
       }
 
+      // Verificar se está em trial (status 'trialing' do Stripe)
+      // Ou se foi cancelada mas tinha trial (verificar por trial_end no Stripe)
+      const isTrialing = user.subscription_status === "trialing" || 
+                         (subscription && subscription.status === "trialing") ||
+                         (subscription && subscription.status === "canceled" && subscription.trial_end);
+
+      // Determinar data de expiração correta
+      // Se está canceled mas tinha trial, verificar se ainda está dentro do período do trial
+      let endDate = user.subscription_end_date;
+      if (subscription && subscription.status === "canceled" && subscription.trial_end) {
+        // Se cancelada após trial, usar trial_end para verificar acesso
+        endDate = stripeTimestampToDate(subscription.trial_end);
+      }
+
+      // Verificar se tem acesso (ativa ou trialing)
+      // Se está canceled, SEMPRE sem acesso, não verificar data
+      let hasAccess = false;
+      if (user.subscription_status === "active" || user.subscription_status === "trialing") {
+        hasAccess = true;
+      } else if (user.subscription_status === "canceled") {
+        // Se cancelada, SEMPRE sem acesso (não verificar data)
+        hasAccess = false;
+      } else {
+        // Qualquer outro status (inactive, past_due, etc) = sem acesso
+        hasAccess = false;
+      }
+
       return res.json({
         hasSubscription: !!user.subscription_id,
         status: user.subscription_status || "inactive",
         subscriptionId: user.subscription_id,
         startDate: user.subscription_start_date,
-        endDate: user.subscription_end_date,
+        endDate: endDate || user.subscription_end_date,
         cancelAtPeriodEnd: cancelAtPeriodEnd,
+        isTrialing: isTrialing,
+        hasAccess: hasAccess,
       });
     } catch (error) {
       console.error("Erro ao obter status da assinatura:", error);
@@ -324,11 +410,17 @@ export default {
             .first();
 
           if (user) {
+            // Se tinha trial, usar trial_end (fim do teste de 7 dias)
+            // Caso contrário, usar ended_at (fim do período pago)
+            const endDate = subscription.trial_end 
+              ? stripeTimestampToDate(subscription.trial_end)
+              : stripeTimestampToDate(subscription.ended_at);
+            
             await db("users")
               .where({ id: user.id })
               .update({
                 subscription_status: "canceled",
-                subscription_end_date: stripeTimestampToDate(subscription.ended_at),
+                subscription_end_date: endDate,
               });
           }
           break;
@@ -374,7 +466,7 @@ export default {
       const userId = req.user.user_id;
 
       const user = await db("users")
-        .select("subscription_id")
+        .select("subscription_id", "subscription_status")
         .where({ id: userId })
         .first();
 
@@ -386,28 +478,39 @@ export default {
         return res.status(400).json({ error: "Usuário não possui assinatura ativa" });
       }
 
-      // Cancelar assinatura no Stripe (cancelará ao fim do período pago)
-      const subscription = await stripe.subscriptions.update(user.subscription_id, {
+      // Buscar subscription atual do Stripe para verificar status
+      const subscription = await stripe.subscriptions.retrieve(user.subscription_id);
+      const isTrialing = subscription.status === "trialing" || user.subscription_status === "trialing";
+
+      // Cancelar ao fim do período (trial ou período pago)
+      // Durante o trial: usuário continua usando até os 7 dias
+      // Após pagar: usuário continua usando até o fim do período pago
+      const updatedSubscription = await stripe.subscriptions.update(user.subscription_id, {
         cancel_at_period_end: true,
       });
 
+      const message = isTrialing 
+        ? "Assinatura será cancelada ao final do período de teste. Você continuará tendo acesso até então."
+        : "Assinatura será cancelada ao fim do período pago. Você continuará tendo acesso até então.";
+
       // Atualizar status no banco
-      const { start: startDate, end: endDate } = getSubscriptionPeriodDates(subscription);
+      const { start: startDate, end: endDate } = getSubscriptionPeriodDates(updatedSubscription);
 
       await db("users")
         .where({ id: userId })
         .update({
-          subscription_status: subscription.status,
+          subscription_status: updatedSubscription.status,
           subscription_start_date: startDate,
           subscription_end_date: endDate,
         });
 
       return res.json({
         success: true,
-        message: "Assinatura será cancelada ao fim do período pago",
-        status: subscription.status,
-        cancelAtPeriodEnd: subscription.cancel_at_period_end,
+        message: message,
+        status: updatedSubscription.status,
+        cancelAtPeriodEnd: updatedSubscription.cancel_at_period_end,
         endDate: endDate,
+        isTrialing: isTrialing,
       });
     } catch (error) {
       console.error("Erro ao cancelar assinatura:", error);
