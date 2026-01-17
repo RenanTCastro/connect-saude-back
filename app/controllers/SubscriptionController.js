@@ -154,8 +154,8 @@ export default {
             quantity: 1,
           },
         ],
-        success_url: `http://localhost:5173/settings`,
-        cancel_url: `http://localhost:5173/settings`,
+        success_url: `https://connectsaude.netlify.app/settings`,
+        cancel_url: `https://connectsaude.netlify.app/settings`,
         metadata: {
           user_id: userId.toString(),
         },
