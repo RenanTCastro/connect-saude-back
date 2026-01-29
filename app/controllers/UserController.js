@@ -15,7 +15,10 @@ export default {
           return res.status(400).json({ error: "Os campos nome, e-mail, telefone e senha são obrigatórios" });
       }
 
-      const existingUser = await db("users").where({ email }).first();
+      // Normaliza o email para lowercase
+      const normalizedEmail = email.toLowerCase().trim();
+
+      const existingUser = await db("users").where({ email: normalizedEmail }).first();
 
       if (existingUser) {
           return res.status(400).json({ error: "E-mail já cadastrado" });
@@ -23,7 +26,7 @@ export default {
 
       const hashedPassword = bcrypt.hashSync(password, 10);
 
-      await db("users").insert({ email, password: hashedPassword, name, phone});
+      await db("users").insert({ email: normalizedEmail, password: hashedPassword, name, phone});
 
       return res.status(201).json({ message: "Usuário registrado com sucesso" });
     } catch (error) {
@@ -42,7 +45,10 @@ export default {
           .json({ message: "É necessário preencher todos os campos" });
       }
 
-      const user = await db("users").where({ email: email });
+      // Normaliza o email para lowercase
+      const normalizedEmail = email.toLowerCase().trim();
+
+      const user = await db("users").where({ email: normalizedEmail });
 
       if (!user.length) {
         res.status(401).json({ message: "Usuário não existe" });
