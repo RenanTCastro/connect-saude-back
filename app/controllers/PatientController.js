@@ -224,6 +224,32 @@ export default {
         });
       }
 
+      // Buscar todos os appointments do paciente para deletar os reminders primeiro
+      const appointments = await db("appointments")
+        .where({ patient_id: id, user_id: userId })
+        .select("id");
+
+      const appointmentIds = appointments.map(apt => apt.id);
+
+      // Deletar os lembretes (appointment_reminders) relacionados aos appointments
+      if (appointmentIds.length > 0) {
+        await db("appointment_reminders")
+          .whereIn("appointment_id", appointmentIds)
+          .del();
+      }
+
+      // Deletar todas as consultas (appointments) do paciente
+      await db("appointments")
+        .where({ patient_id: id, user_id: userId })
+        .del();
+
+      // Remover a relação do paciente nas transações (setar patient_id para null)
+      // Mantém a transação, apenas remove a associação com o paciente
+      await db("transactions")
+        .where({ patient_id: id, user_id: userId })
+        .update({ patient_id: null, updated_at: db.fn.now() });
+
+      // Deletar o paciente
       await db("patients")
         .where({ id, user_id: userId })
         .del();
