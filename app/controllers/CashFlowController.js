@@ -28,9 +28,13 @@ export default {
           "transactions.id",
           "transactions.due_date as dueDate",
           "transactions.title",
+          "transactions.description",
+          "transactions.patient_id as patientId",
           "patients.full_name as patientName",
           "transactions.payment_type as paymentType",
-          "transactions.amount"
+          "transactions.amount",
+          "transactions.is_paid as isPaid",
+          "transactions.payment_date as paymentDate"
         )
         .orderBy("transactions.due_date", "asc");
 
@@ -43,20 +47,26 @@ export default {
           "id",
           "due_date as dueDate",
           "title",
+          "description",
           "payment_type as paymentType",
-          "amount"
+          "amount",
+          "recurrence",
+          "is_paid as isPaid",
+          "payment_date as paymentDate"
         )
         .orderBy("due_date", "asc");
 
-      // Garantir que amounts sejam números
+      // Garantir que amounts sejam números e isPaid seja booleano
       const incomes = incomesData.map(item => ({
         ...item,
         amount: parseFloat(item.amount) || 0,
+        isPaid: Boolean(item.isPaid),
       }));
 
       const expenses = expensesData.map(item => ({
         ...item,
         amount: parseFloat(item.amount) || 0,
+        isPaid: Boolean(item.isPaid),
       }));
 
       return res.status(200).json({
@@ -501,6 +511,340 @@ export default {
       console.error("Erro ao marcar como paga:", error);
       return res.status(500).json({
         error: "Erro ao marcar como paga.",
+        details: error.message,
+      });
+    }
+  },
+
+  async updateIncome(req, res) {
+    try {
+      const userId = req.user.user_id;
+      const { id } = req.params;
+      const {
+        title,
+        description,
+        amount,
+        dueDate,
+        patientId,
+        paymentType,
+      } = req.body;
+
+      // Verificar se a transaction existe e pertence ao usuário
+      const transaction = await db("transactions")
+        .where("id", id)
+        .where("user_id", userId)
+        .where("type", "income")
+        .first();
+
+      if (!transaction) {
+        return res.status(404).json({
+          error: "Receita não encontrada ou sem permissão.",
+        });
+      }
+
+      // Verificar se tem parcelas (não permitir edição de receitas parceladas por este endpoint)
+      const hasInstallments = await db("installments")
+        .where("transaction_id", id)
+        .first();
+
+      if (hasInstallments) {
+        return res.status(400).json({
+          error: "Receitas parceladas não podem ser editadas por este endpoint.",
+        });
+      }
+
+      // Validações
+      if (!title || !amount || !dueDate || !paymentType) {
+        return res.status(400).json({
+          error: "Os campos título, valor, data de vencimento e tipo de pagamento são obrigatórios.",
+        });
+      }
+
+      if (amount <= 0) {
+        return res.status(400).json({
+          error: "O valor deve ser maior que zero.",
+        });
+      }
+
+      const validPaymentTypes = ["Dinheiro", "PIX", "Cartão", "Transferência"];
+      if (!validPaymentTypes.includes(paymentType)) {
+        return res.status(400).json({
+          error: "Tipo de pagamento inválido.",
+        });
+      }
+
+      // Verificar se paciente existe (se fornecido)
+      if (patientId) {
+        const patient = await db("patients")
+          .where({ id: patientId, user_id: userId })
+          .first();
+        if (!patient) {
+          return res.status(404).json({
+            error: "Paciente não encontrado.",
+          });
+        }
+      }
+
+      // Atualizar transaction
+      await db("transactions")
+        .where("id", id)
+        .update({
+          title,
+          description: description || null,
+          amount,
+          due_date: dueDate,
+          patient_id: patientId || null,
+          payment_type: paymentType,
+          updated_at: db.fn.now(),
+        });
+
+      return res.status(200).json({
+        message: "Receita atualizada com sucesso!",
+      });
+    } catch (error) {
+      console.error("Erro ao atualizar receita:", error);
+      return res.status(500).json({
+        error: "Erro ao atualizar receita.",
+        details: error.message,
+      });
+    }
+  },
+
+  async deleteIncome(req, res) {
+    try {
+      const userId = req.user.user_id;
+      const { id } = req.params;
+
+      // Verificar se a transaction existe e pertence ao usuário
+      const transaction = await db("transactions")
+        .where("id", id)
+        .where("user_id", userId)
+        .where("type", "income")
+        .first();
+
+      if (!transaction) {
+        return res.status(404).json({
+          error: "Receita não encontrada ou sem permissão.",
+        });
+      }
+
+      // Verificar se tem parcelas
+      const hasInstallments = await db("installments")
+        .where("transaction_id", id)
+        .first();
+
+      if (hasInstallments) {
+        // Deletar parcelas primeiro
+        await db("installments")
+          .where("transaction_id", id)
+          .delete();
+      }
+
+      // Deletar transaction
+      await db("transactions")
+        .where("id", id)
+        .delete();
+
+      return res.status(200).json({
+        message: "Receita deletada com sucesso!",
+      });
+    } catch (error) {
+      console.error("Erro ao deletar receita:", error);
+      return res.status(500).json({
+        error: "Erro ao deletar receita.",
+        details: error.message,
+      });
+    }
+  },
+
+  async updateExpense(req, res) {
+    try {
+      const userId = req.user.user_id;
+      const { id } = req.params;
+      const {
+        title,
+        description,
+        amount,
+        dueDate,
+        paymentType,
+        recurrence,
+      } = req.body;
+
+      // Verificar se a transaction existe e pertence ao usuário
+      const transaction = await db("transactions")
+        .where("id", id)
+        .where("user_id", userId)
+        .where("type", "expense")
+        .first();
+
+      if (!transaction) {
+        return res.status(404).json({
+          error: "Despesa não encontrada ou sem permissão.",
+        });
+      }
+
+      // Validações
+      if (!title || !amount || !dueDate || !paymentType) {
+        return res.status(400).json({
+          error: "Os campos título, valor, data de vencimento e tipo de pagamento são obrigatórios.",
+        });
+      }
+
+      if (amount <= 0) {
+        return res.status(400).json({
+          error: "O valor deve ser maior que zero.",
+        });
+      }
+
+      const validPaymentTypes = ["Dinheiro", "PIX", "Cartão", "Transferência"];
+      if (!validPaymentTypes.includes(paymentType)) {
+        return res.status(400).json({
+          error: "Tipo de pagamento inválido.",
+        });
+      }
+
+      let recurrenceJson = null;
+
+      // Se for recorrente
+      if (recurrence) {
+        const { frequency, interval, endDate } = recurrence;
+
+        if (!frequency || !interval) {
+          return res.status(400).json({
+            error: "Para recorrência, informe: frequency e interval.",
+          });
+        }
+
+        const validFrequencies = ["daily", "weekly", "monthly", "yearly"];
+        if (!validFrequencies.includes(frequency)) {
+          return res.status(400).json({
+            error: "frequency deve ser: daily, weekly, monthly ou yearly.",
+          });
+        }
+
+        recurrenceJson = JSON.stringify({
+          frequency,
+          interval,
+          endDate: endDate || null,
+        });
+      }
+
+      // Atualizar transaction
+      await db("transactions")
+        .where("id", id)
+        .update({
+          title,
+          description: description || null,
+          amount,
+          due_date: dueDate,
+          payment_type: paymentType,
+          recurrence: recurrenceJson,
+          updated_at: db.fn.now(),
+        });
+
+      return res.status(200).json({
+        message: "Despesa atualizada com sucesso!",
+      });
+    } catch (error) {
+      console.error("Erro ao atualizar despesa:", error);
+      return res.status(500).json({
+        error: "Erro ao atualizar despesa.",
+        details: error.message,
+      });
+    }
+  },
+
+  async deleteExpense(req, res) {
+    try {
+      const userId = req.user.user_id;
+      const { id } = req.params;
+
+      // Verificar se a transaction existe e pertence ao usuário
+      const transaction = await db("transactions")
+        .where("id", id)
+        .where("user_id", userId)
+        .where("type", "expense")
+        .first();
+
+      if (!transaction) {
+        return res.status(404).json({
+          error: "Despesa não encontrada ou sem permissão.",
+        });
+      }
+
+      // Deletar transaction
+      await db("transactions")
+        .where("id", id)
+        .delete();
+
+      return res.status(200).json({
+        message: "Despesa deletada com sucesso!",
+      });
+    } catch (error) {
+      console.error("Erro ao deletar despesa:", error);
+      return res.status(500).json({
+        error: "Erro ao deletar despesa.",
+        details: error.message,
+      });
+    }
+  },
+
+  async togglePaidStatus(req, res) {
+    try {
+      const userId = req.user.user_id;
+      const { id } = req.params;
+      const { type } = req.query; // 'income' ou 'expense'
+
+      if (!type || !['income', 'expense'].includes(type)) {
+        return res.status(400).json({
+          error: "Tipo deve ser 'income' ou 'expense'.",
+        });
+      }
+
+      // Verificar se a transaction existe e pertence ao usuário
+      const transaction = await db("transactions")
+        .where("id", id)
+        .where("user_id", userId)
+        .where("type", type)
+        .first();
+
+      if (!transaction) {
+        return res.status(404).json({
+          error: "Transação não encontrada ou sem permissão.",
+        });
+      }
+
+      // Verificar se tem parcelas (não permitir alterar status de receitas parceladas por este endpoint)
+      const hasInstallments = await db("installments")
+        .where("transaction_id", id)
+        .first();
+
+      if (hasInstallments) {
+        return res.status(400).json({
+          error: "Receitas parceladas não podem ter status alterado por este endpoint.",
+        });
+      }
+
+      // Toggle do status
+      const newStatus = !transaction.is_paid;
+      const now = dayjs().format("YYYY-MM-DD");
+
+      await db("transactions")
+        .where("id", id)
+        .update({
+          is_paid: newStatus,
+          payment_date: newStatus ? now : null,
+          updated_at: db.fn.now(),
+        });
+
+      return res.status(200).json({
+        message: newStatus ? "Marcado como pago!" : "Marcado como não pago!",
+        isPaid: newStatus,
+      });
+    } catch (error) {
+      console.error("Erro ao alterar status de pagamento:", error);
+      return res.status(500).json({
+        error: "Erro ao alterar status de pagamento.",
         details: error.message,
       });
     }
