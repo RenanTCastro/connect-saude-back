@@ -48,13 +48,34 @@ export default {
       // Hash da senha
       const hashedPassword = bcrypt.hashSync(password, 10);
 
-      // Insere o usuário
-      await db("users").insert({ 
-        email: normalizedEmail, 
-        password: hashedPassword, 
-        name, 
-        phone
-      });
+      // Insere o usuário e obtém o ID
+      const [newUser] = await db("users")
+        .insert({ 
+          email: normalizedEmail, 
+          password: hashedPassword, 
+          name, 
+          phone
+        })
+        .returning("id");
+
+      const userId = newUser?.id || newUser;
+
+      // Cria os estágios padrões de venda
+      const defaultStages = [
+        { name: "Primeiro Contato", order_position: 1 },
+        { name: "Pendentes", order_position: 2 },
+        { name: "Negociação", order_position: 3 },
+        { name: "Fechamento", order_position: 4 },
+      ];
+
+      await db("sales_stages").insert(
+        defaultStages.map(stage => ({
+          user_id: userId,
+          name: stage.name,
+          order_position: stage.order_position,
+          created_at: db.fn.now(),
+        }))
+      );
 
       return res.status(201).json({ 
         message: "Usuário registrado com sucesso" 

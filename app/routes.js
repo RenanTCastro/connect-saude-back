@@ -55,7 +55,12 @@ routes.delete("/appointments/:id", authMiddleware, AppointmentController.deleteA
 
 routes.get("/cashflow/period", authMiddleware, CashFlowController.getPeriodData);
 routes.post("/cashflow/income", authMiddleware, CashFlowController.createIncome);
+routes.put("/cashflow/income/:id", authMiddleware, CashFlowController.updateIncome);
+routes.delete("/cashflow/income/:id", authMiddleware, CashFlowController.deleteIncome);
 routes.post("/cashflow/expense", authMiddleware, CashFlowController.createExpense);
+routes.put("/cashflow/expense/:id", authMiddleware, CashFlowController.updateExpense);
+routes.delete("/cashflow/expense/:id", authMiddleware, CashFlowController.deleteExpense);
+routes.put("/cashflow/transactions/:id/toggle-paid", authMiddleware, CashFlowController.togglePaidStatus);
 routes.get("/cashflow/receivables", authMiddleware, CashFlowController.getReceivables);
 routes.put("/cashflow/installments/:id/pay", authMiddleware, CashFlowController.markInstallmentAsPaid);
 

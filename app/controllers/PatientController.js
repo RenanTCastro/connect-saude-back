@@ -29,6 +29,17 @@ export default {
         });
       }
 
+      // Verificar se já existe um paciente com o mesmo CPF para este usuário
+      const existingPatient = await db("patients")
+        .where({ user_id: userId, cpf: cpf })
+        .first();
+
+      if (existingPatient) {
+        return res.status(400).json({
+          error: "Já existe um paciente cadastrado com este CPF na sua conta.",
+        });
+      }
+
       const lastPatient = await db("patients")
         .where({ user_id: userId })
         .max("patient_number as last_number")
@@ -156,6 +167,20 @@ export default {
         cpf,
       } = req.body;
 
+      // Verificar se já existe outro paciente com o mesmo CPF para este usuário
+      if (cpf) {
+        const existingPatient = await db("patients")
+          .where({ user_id: userId, cpf: cpf })
+          .whereNot({ id: id })
+          .first();
+
+        if (existingPatient) {
+          return res.status(400).json({
+            error: "Já existe outro paciente cadastrado com este CPF na sua conta.",
+          });
+        }
+      }
+
       await db("patients")
         .where({ id, user_id: userId })
         .update(
@@ -199,6 +224,32 @@ export default {
         });
       }
 
+      // Buscar todos os appointments do paciente para deletar os reminders primeiro
+      const appointments = await db("appointments")
+        .where({ patient_id: id, user_id: userId })
+        .select("id");
+
+      const appointmentIds = appointments.map(apt => apt.id);
+
+      // Deletar os lembretes (appointment_reminders) relacionados aos appointments
+      if (appointmentIds.length > 0) {
+        await db("appointment_reminders")
+          .whereIn("appointment_id", appointmentIds)
+          .del();
+      }
+
+      // Deletar todas as consultas (appointments) do paciente
+      await db("appointments")
+        .where({ patient_id: id, user_id: userId })
+        .del();
+
+      // Remover a relação do paciente nas transações (setar patient_id para null)
+      // Mantém a transação, apenas remove a associação com o paciente
+      await db("transactions")
+        .where({ patient_id: id, user_id: userId })
+        .update({ patient_id: null, updated_at: db.fn.now() });
+
+      // Deletar o paciente
       await db("patients")
         .where({ id, user_id: userId })
         .del();
