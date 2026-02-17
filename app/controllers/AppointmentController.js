@@ -6,6 +6,63 @@ import timezone from "dayjs/plugin/timezone.js";
 dayjs.extend(utc);
 dayjs.extend(timezone);
 
+async function createOrUpdateReminders(appointmentId, startDatetime, sendReminder) {
+  if (!sendReminder || !startDatetime) {
+    await db("appointment_reminders")
+      .where("appointment_id", appointmentId)
+      .delete();
+    return;
+  }
+
+  const appointmentStart = dayjs(startDatetime).tz("America/Sao_Paulo");
+  const now = dayjs().tz("America/Sao_Paulo");
+  const hoursUntilAppointment = appointmentStart.diff(now, "hour", true);
+  const minutesUntilAppointment = appointmentStart.diff(now, "minute", true);
+
+  const reminder24hAt = appointmentStart.subtract(24, "hour");
+  const reminder2hAt = appointmentStart.subtract(2, "hour");
+  const reminder20minAt = now.add(20, "minute");
+
+  await db("appointment_reminders")
+    .where("appointment_id", appointmentId)
+    .whereIn("status", ["pending"])
+    .delete();
+
+  if (hoursUntilAppointment < 2) {
+    if (minutesUntilAppointment >= 30) {
+      await db("appointment_reminders").insert({
+        appointment_id: appointmentId,
+        send_at: reminder20minAt.toISOString(),
+        status: "pending",
+        sent_count: 0,
+        template_type: "twilioContentSid2h",
+        created_at: db.fn.now(),
+      });
+    }
+    return;
+  }
+
+  if (hoursUntilAppointment >= 12) {
+    await db("appointment_reminders").insert({
+      appointment_id: appointmentId,
+      send_at: reminder24hAt.toISOString(),
+      status: "pending",
+      sent_count: 0,
+      template_type: "twilioContentSid24h",
+      created_at: db.fn.now(),
+    });
+  }
+
+  await db("appointment_reminders").insert({
+    appointment_id: appointmentId,
+    send_at: reminder2hAt.toISOString(),
+    status: "pending",
+    sent_count: 0,
+    template_type: "twilioContentSid2h",
+    created_at: db.fn.now(),
+  });
+}
+
 export default {
   async createAppointment(req, res) {
     try {
@@ -118,6 +175,15 @@ export default {
 
       const insertedAppointment = Array.isArray(result) ? result[0] : result;
       const id = insertedAppointment?.id || insertedAppointment;
+
+      // Criar lembretes se for consulta e send_reminder estiver ativado
+      if (type === "consulta" && appointmentData.send_reminder) {
+        await createOrUpdateReminders(
+          id,
+          appointmentData.start_datetime,
+          appointmentData.send_reminder
+        );
+      }
 
       // Buscar o appointment criado com joins
       const appointment = await db("appointments")
@@ -440,6 +506,34 @@ export default {
 
       await db("appointments").where({ id, user_id: userId }).update(updateData);
 
+      // Buscar o appointment atualizado para obter os dados finais
+      const updatedAppointment = await db("appointments")
+        .where({ id, user_id: userId })
+        .first();
+
+      // Criar ou atualizar lembretes se for consulta, ou deletar se mudou para compromisso
+      if (updatedAppointment) {
+        if (updatedAppointment.type === "consulta") {
+          const finalSendReminder = send_reminder !== undefined 
+            ? send_reminder 
+            : (send_confirmation !== undefined ? send_confirmation : updatedAppointment.send_reminder);
+          const finalStartDatetime = start_datetime 
+            ? dayjs(start_datetime).tz("America/Sao_Paulo").toISOString()
+            : updatedAppointment.start_datetime;
+
+          await createOrUpdateReminders(
+            id,
+            finalStartDatetime,
+            finalSendReminder
+          );
+        } else if (type !== undefined && type !== "consulta") {
+          // Se mudou de consulta para compromisso, deletar os reminders
+          await db("appointment_reminders")
+            .where("appointment_id", id)
+            .delete();
+        }
+      }
+
       // Buscar o appointment atualizado com joins
       const appointment = await db("appointments")
         .select(
@@ -503,6 +597,11 @@ export default {
     try {
       const { id } = req.params;
       const userId = req.user.user_id;
+
+      // Deletar os reminders relacionados antes de deletar o appointment
+      await db("appointment_reminders")
+        .where("appointment_id", id)
+        .delete();
 
       const deleted = await db("appointments").where({ id, user_id: userId }).delete();
 
