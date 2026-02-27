@@ -4,11 +4,14 @@ const cors = require("cors");
 require("dotenv").config();
 
 const routes = require("./routes");
+const startAppointmentReminder = require("./jobs/appointmentReminder");
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
 app.use(cors());
+
+startAppointmentReminder();
 
 // Webhook do Stripe precisa de raw body
 app.use("/subscription/webhook", express.raw({ type: "application/json" }));
