@@ -169,4 +169,91 @@ export default {
       });
     }
   },
+
+  async getProfile(req, res) {
+    try {
+      const userId = req.user?.user_id;
+
+      if (!userId) {
+        return res.status(401).json({
+          error: "Usuário não autenticado",
+        });
+      }
+
+      const user = await db("users")
+        .where({ id: userId })
+        .first("id", "name", "email", "phone");
+
+      if (!user) {
+        return res.status(404).json({
+          error: "Usuário não encontrado",
+        });
+      }
+
+      return res.status(200).json(user);
+    } catch (error) {
+      console.error("Erro ao buscar perfil do usuário:", error);
+
+      if (error.code === "SQLITE_ERROR" || error.code === "ECONNREFUSED") {
+        return res.status(503).json({
+          error: "Erro de conexão com o banco de dados. Tente novamente mais tarde.",
+        });
+      }
+
+      return res.status(500).json({
+        error: "Erro interno do servidor ao buscar perfil do usuário",
+      });
+    }
+  },
+
+  async updateProfile(req, res) {
+    try {
+      const userId = req.user?.user_id;
+
+      if (!userId) {
+        return res.status(401).json({
+          error: "Usuário não autenticado",
+        });
+      }
+
+      const { name, phone } = req.body;
+
+      if (!name) {
+        return res.status(400).json({
+          error: "O nome é obrigatório",
+        });
+      }
+
+      const updateData = {
+        name: name.trim(),
+      };
+
+      if (phone !== undefined) {
+        updateData.phone = phone;
+      }
+
+      await db("users").where({ id: userId }).update(updateData);
+
+      const updatedUser = await db("users")
+        .where({ id: userId })
+        .first("id", "name", "email", "phone");
+
+      return res.status(200).json({
+        message: "Perfil atualizado com sucesso",
+        user: updatedUser,
+      });
+    } catch (error) {
+      console.error("Erro ao atualizar perfil do usuário:", error);
+
+      if (error.code === "SQLITE_ERROR" || error.code === "ECONNREFUSED") {
+        return res.status(503).json({
+          error: "Erro de conexão com o banco de dados. Tente novamente mais tarde.",
+        });
+      }
+
+      return res.status(500).json({
+        error: "Erro interno do servidor ao atualizar perfil do usuário",
+      });
+    }
+  },
 };

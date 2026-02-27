@@ -14,6 +14,8 @@ const SubscriptionController = require("./controllers/SubscriptionController").d
 
 routes.post("/login", UserController.login); 
 routes.post("/register", UserController.register);
+routes.get("/me", authMiddleware, UserController.getProfile);
+routes.put("/me", authMiddleware, UserController.updateProfile);
 
 routes.get("/patients", authMiddleware, PatientController.getPatients);
 routes.get("/patients/:id", authMiddleware, PatientController.getPatientById);
