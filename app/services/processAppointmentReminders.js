@@ -28,6 +28,12 @@ function isValidWhatsAppPhone(phone) {
   if (isNaN(ddd) || ddd < 11 || ddd > 99) return false;
 
   if (cleanPhone[2] !== '9') return false;
+
+  const numberPart = cleanPhone.slice(2);
+  if (/^(\d)\1+$/.test(numberPart)) {
+    return false;
+  }
+  
   return true;
 }
 
