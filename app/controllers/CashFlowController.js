@@ -652,7 +652,7 @@ export default {
           .join("transactions", "installments.transaction_id", "transactions.id")
           .where("installments.id", id)
           .where("transactions.user_id", userId)
-          .select("installments.*")
+          .select("installments.*", "transactions.type")
           .first();
 
         if (!installment) {
@@ -661,13 +661,15 @@ export default {
           });
         }
 
-        // Marcar como paga
+        // Toggle do status (marcar como paga ou não paga)
+        const newStatus = !installment.is_paid;
         const now = dayjs().format("YYYY-MM-DD");
+        
         await db("installments")
           .where("id", id)
           .update({
-            is_paid: true,
-            payment_date: now,
+            is_paid: newStatus,
+            payment_date: newStatus ? now : null,
           });
 
         // Verificar se todas as parcelas da transação foram pagas
@@ -677,18 +679,27 @@ export default {
           .count("* as count")
           .first();
 
+        // Atualizar status da transaction baseado nas parcelas
         if (parseInt(unpaidCount.count) === 0) {
-          // Marcar transaction como paga também
+          // Todas as parcelas foram pagas, marcar transaction como paga
           await db("transactions")
             .where("id", installment.transaction_id)
             .update({
               is_paid: true,
               payment_date: now,
             });
+        } else {
+          // Ainda há parcelas não pagas, marcar transaction como não paga
+          await db("transactions")
+            .where("id", installment.transaction_id)
+            .update({
+              is_paid: false,
+              payment_date: null,
+            });
         }
 
         return res.status(200).json({
-          message: "Parcela marcada como paga com sucesso!",
+          message: newStatus ? "Parcela marcada como paga com sucesso!" : "Parcela marcada como não paga com sucesso!",
         });
       }
     } catch (error) {
@@ -1184,14 +1195,14 @@ export default {
         });
       }
 
-      // Verificar se tem parcelas (não permitir alterar status de receitas parceladas por este endpoint)
+      // Verificar se tem parcelas (não permitir alterar status de transações parceladas por este endpoint)
       const hasInstallments = await db("installments")
         .where("transaction_id", id)
         .first();
 
       if (hasInstallments) {
         return res.status(400).json({
-          error: "Receitas parceladas não podem ter status alterado por este endpoint.",
+          error: "Transações parceladas não podem ter status alterado por este endpoint. Use o endpoint de parcelas.",
         });
       }
 
