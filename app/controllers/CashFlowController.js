@@ -18,12 +18,17 @@ export default {
         });
       }
 
-      // Buscar receitas (type = 'income')
-      const incomesData = await db("transactions")
+      // Buscar receitas simples (sem parcelas) no período
+      const simpleIncomesData = await db("transactions")
         .leftJoin("patients", "transactions.patient_id", "patients.id")
         .where("transactions.user_id", userId)
         .where("transactions.type", "income")
         .whereBetween("transactions.due_date", [startDate, endDate])
+        .whereNotExists(function() {
+          this.select("*")
+            .from("installments")
+            .whereRaw("installments.transaction_id = transactions.id");
+        })
         .select(
           "transactions.id",
           "transactions.due_date as dueDate",
@@ -38,11 +43,70 @@ export default {
         )
         .orderBy("transactions.due_date", "asc");
 
-      // Buscar despesas (type = 'expense')
-      const expensesData = await db("transactions")
+      // Buscar parcelas de receitas no período
+      const installmentsData = await db("installments")
+        .join("transactions", "installments.transaction_id", "transactions.id")
+        .leftJoin("patients", "transactions.patient_id", "patients.id")
+        .where("transactions.user_id", userId)
+        .where("transactions.type", "income")
+        .whereBetween("installments.due_date", [startDate, endDate])
+        .select(
+          "installments.id",
+          "installments.due_date as dueDate",
+          "transactions.title",
+          "transactions.description",
+          "transactions.patient_id as patientId",
+          "patients.full_name as patientName",
+          "transactions.payment_type as paymentType",
+          "installments.amount",
+          "installments.is_paid as isPaid",
+          "installments.payment_date as paymentDate",
+          "installments.installment_number as installmentNumber",
+          "transactions.id as transactionId"
+        )
+        .orderBy("installments.due_date", "asc");
+
+      // Buscar total de parcelas por transaction para incluir informação de parcela
+      const transactionIds = [...new Set(installmentsData.map((i) => i.transactionId))];
+      const totalInstallmentsMap = {};
+
+      for (const transactionId of transactionIds) {
+        const total = await db("installments")
+          .where("transaction_id", transactionId)
+          .count("* as total")
+          .first();
+        totalInstallmentsMap[transactionId] = parseInt(total.total);
+      }
+
+      // Formatar parcelas para incluir informação de parcela
+      const formattedInstallments = installmentsData.map((inst) => ({
+        id: `installment_${inst.id}`, // Prefixo para identificar como parcela
+        dueDate: inst.dueDate,
+        title: `${inst.title} (${inst.installmentNumber}/${totalInstallmentsMap[inst.transactionId] || 1})`,
+        description: inst.description,
+        patientId: inst.patientId,
+        patientName: inst.patientName,
+        paymentType: inst.paymentType,
+        amount: parseFloat(inst.amount) || 0,
+        isPaid: Boolean(inst.isPaid),
+        paymentDate: inst.paymentDate,
+        installmentNumber: inst.installmentNumber,
+        transactionId: inst.transactionId,
+      }));
+
+      // Combinar receitas simples e parcelas
+      const incomesData = [...simpleIncomesData, ...formattedInstallments];
+
+      // Buscar despesas simples (sem parcelas) no período
+      const simpleExpensesData = await db("transactions")
         .where("user_id", userId)
         .where("type", "expense")
         .whereBetween("due_date", [startDate, endDate])
+        .whereNotExists(function() {
+          this.select("*")
+            .from("installments")
+            .whereRaw("installments.transaction_id = transactions.id");
+        })
         .select(
           "id",
           "due_date as dueDate",
@@ -50,24 +114,82 @@ export default {
           "description",
           "payment_type as paymentType",
           "amount",
-          "recurrence",
           "is_paid as isPaid",
           "payment_date as paymentDate"
         )
         .orderBy("due_date", "asc");
+
+      // Buscar parcelas de despesas no período
+      const expenseInstallmentsData = await db("installments")
+        .join("transactions", "installments.transaction_id", "transactions.id")
+        .where("transactions.user_id", userId)
+        .where("transactions.type", "expense")
+        .whereBetween("installments.due_date", [startDate, endDate])
+        .select(
+          "installments.id",
+          "installments.due_date as dueDate",
+          "transactions.title",
+          "transactions.description",
+          "transactions.payment_type as paymentType",
+          "installments.amount",
+          "installments.is_paid as isPaid",
+          "installments.payment_date as paymentDate",
+          "installments.installment_number as installmentNumber",
+          "transactions.id as transactionId"
+        )
+        .orderBy("installments.due_date", "asc");
+
+      // Buscar total de parcelas por transaction de despesas
+      const expenseTransactionIds = [...new Set(expenseInstallmentsData.map((i) => i.transactionId))];
+      const expenseTotalInstallmentsMap = {};
+
+      for (const transactionId of expenseTransactionIds) {
+        const total = await db("installments")
+          .where("transaction_id", transactionId)
+          .count("* as total")
+          .first();
+        expenseTotalInstallmentsMap[transactionId] = parseInt(total.total);
+      }
+
+      // Formatar parcelas de despesas
+      const formattedExpenseInstallments = expenseInstallmentsData.map((inst) => ({
+        id: `installment_${inst.id}`, // Prefixo para identificar como parcela
+        dueDate: inst.dueDate,
+        title: `${inst.title} (${inst.installmentNumber}/${expenseTotalInstallmentsMap[inst.transactionId] || 1})`,
+        description: inst.description,
+        paymentType: inst.paymentType,
+        amount: parseFloat(inst.amount) || 0,
+        isPaid: Boolean(inst.isPaid),
+        paymentDate: inst.paymentDate,
+        installmentNumber: inst.installmentNumber,
+        transactionId: inst.transactionId,
+      }));
+
+      // Combinar despesas simples e parcelas
+      const expensesData = [...simpleExpensesData, ...formattedExpenseInstallments];
 
       // Garantir que amounts sejam números e isPaid seja booleano
       const incomes = incomesData.map(item => ({
         ...item,
         amount: parseFloat(item.amount) || 0,
         isPaid: Boolean(item.isPaid),
-      }));
+      })).sort((a, b) => {
+        // Ordenar por data
+        const dateA = new Date(a.dueDate);
+        const dateB = new Date(b.dueDate);
+        return dateA - dateB;
+      });
 
       const expenses = expensesData.map(item => ({
         ...item,
         amount: parseFloat(item.amount) || 0,
         isPaid: Boolean(item.isPaid),
-      }));
+      })).sort((a, b) => {
+        // Ordenar por data
+        const dateA = new Date(a.dueDate);
+        const dateB = new Date(b.dueDate);
+        return dateA - dateB;
+      });
 
       return res.status(200).json({
         incomes,
@@ -95,10 +217,17 @@ export default {
         installments,
       } = req.body;
 
-      // Validações
-      if (!title || !amount || !dueDate || !paymentType) {
+      // Validações básicas
+      if (!title || !amount || !paymentType) {
         return res.status(400).json({
-          error: "Os campos título, valor, data de vencimento e tipo de pagamento são obrigatórios.",
+          error: "Os campos título, valor e tipo de pagamento são obrigatórios.",
+        });
+      }
+
+      // Se não tiver parcelas, dueDate é obrigatório
+      if ((!installments || installments.count <= 1) && !dueDate) {
+        return res.status(400).json({
+          error: "A data de vencimento é obrigatória para receitas não parceladas.",
         });
       }
 
@@ -129,11 +258,11 @@ export default {
 
       // Se tiver parcelas
       if (installments && installments.count > 1) {
-        const { count, firstDate, interval, intervalType } = installments;
+        const { count, firstDate, interval = 1, intervalType } = installments;
 
-        if (!count || !firstDate || !interval || !intervalType) {
+        if (!count || !firstDate || !intervalType) {
           return res.status(400).json({
-            error: "Para parcelamento, informe: count, firstDate, interval e intervalType.",
+            error: "Para parcelamento, informe: count, firstDate e intervalType.",
           });
         }
 
@@ -239,13 +368,20 @@ export default {
         amount,
         dueDate,
         paymentType,
-        recurrence,
+        installments,
       } = req.body;
 
-      // Validações
-      if (!title || !amount || !dueDate || !paymentType) {
+      // Validações básicas
+      if (!title || !amount || !paymentType) {
         return res.status(400).json({
-          error: "Os campos título, valor, data de vencimento e tipo de pagamento são obrigatórios.",
+          error: "Os campos título, valor e tipo de pagamento são obrigatórios.",
+        });
+      }
+
+      // Se não tiver parcelas, dueDate é obrigatório
+      if ((!installments || installments.count <= 1) && !dueDate) {
+        return res.status(400).json({
+          error: "A data de vencimento é obrigatória para despesas não parceladas.",
         });
       }
 
@@ -262,50 +398,98 @@ export default {
         });
       }
 
-      let recurrenceJson = null;
+      // Se tiver parcelas
+      if (installments && installments.count > 1) {
+        const { count, firstDate, interval = 1, intervalType } = installments;
 
-      // Se for recorrente
-      if (recurrence) {
-        const { frequency, interval, endDate } = recurrence;
-
-        if (!frequency || !interval) {
+        if (!count || !firstDate || !intervalType) {
           return res.status(400).json({
-            error: "Para recorrência, informe: frequency e interval.",
+            error: "Para parcelamento, informe: count, firstDate e intervalType.",
           });
         }
 
-        const validFrequencies = ["daily", "weekly", "monthly", "yearly"];
-        if (!validFrequencies.includes(frequency)) {
+        const validIntervalTypes = ["daily", "weekly", "monthly"];
+        if (!validIntervalTypes.includes(intervalType)) {
           return res.status(400).json({
-            error: "frequency deve ser: daily, weekly, monthly ou yearly.",
+            error: "intervalType deve ser: daily, weekly ou monthly.",
           });
         }
 
-        recurrenceJson = JSON.stringify({
-          frequency,
-          interval,
-          endDate: endDate || null,
+        // Criar transaction principal
+        const [transaction] = await db("transactions")
+          .insert({
+            user_id: userId,
+            type: "expense",
+            title,
+            description,
+            amount: 0, // Valor total será calculado das parcelas
+            due_date: firstDate,
+            payment_type: paymentType,
+            is_paid: false,
+            created_at: db.fn.now(),
+            updated_at: db.fn.now(),
+          })
+          .returning("id");
+
+        // Calcular valor por parcela
+        const installmentAmount = parseFloat((amount / count).toFixed(2));
+        const remainder = parseFloat(amount) - installmentAmount * count;
+        const firstAmount = installmentAmount + remainder;
+
+        // Gerar parcelas
+        const installmentsData = [];
+        let currentDate = dayjs(firstDate);
+
+        for (let i = 1; i <= count; i++) {
+          let installmentDueDate = currentDate.format("YYYY-MM-DD");
+          let installmentValue = i === 1 ? firstAmount : installmentAmount;
+
+          installmentsData.push({
+            transaction_id: transaction.id,
+            installment_number: i,
+            amount: installmentValue,
+            due_date: installmentDueDate,
+            is_paid: false,
+            created_at: db.fn.now(),
+          });
+
+          // Calcular próxima data
+          if (i < count) {
+            if (intervalType === "daily") {
+              currentDate = currentDate.add(interval, "day");
+            } else if (intervalType === "weekly") {
+              currentDate = currentDate.add(interval, "week");
+            } else if (intervalType === "monthly") {
+              currentDate = currentDate.add(interval, "month");
+            }
+          }
+        }
+
+        await db("installments").insert(installmentsData);
+
+        return res.status(201).json({
+          message: "Despesa parcelada criada com sucesso!",
+          transactionId: transaction.id,
+        });
+      } else {
+        // Criar despesa única (sem parcelas)
+        await db("transactions").insert({
+          user_id: userId,
+          type: "expense",
+          title,
+          description,
+          amount,
+          due_date: dueDate,
+          payment_type: paymentType,
+          is_paid: false,
+          created_at: db.fn.now(),
+          updated_at: db.fn.now(),
+        });
+
+        return res.status(201).json({
+          message: "Despesa criada com sucesso!",
         });
       }
-
-      // Criar transaction
-      await db("transactions").insert({
-        user_id: userId,
-        type: "expense",
-        title,
-        description,
-        amount,
-        due_date: dueDate,
-        payment_type: paymentType,
-        recurrence: recurrenceJson,
-        is_paid: false,
-        created_at: db.fn.now(),
-        updated_at: db.fn.now(),
-      });
-
-      return res.status(201).json({
-        message: "Despesa criada com sucesso!",
-      });
     } catch (error) {
       console.error("Erro ao criar despesa:", error);
       return res.status(500).json({
@@ -468,7 +652,7 @@ export default {
           .join("transactions", "installments.transaction_id", "transactions.id")
           .where("installments.id", id)
           .where("transactions.user_id", userId)
-          .select("installments.*")
+          .select("installments.*", "transactions.type")
           .first();
 
         if (!installment) {
@@ -477,13 +661,15 @@ export default {
           });
         }
 
-        // Marcar como paga
+        // Toggle do status (marcar como paga ou não paga)
+        const newStatus = !installment.is_paid;
         const now = dayjs().format("YYYY-MM-DD");
+        
         await db("installments")
           .where("id", id)
           .update({
-            is_paid: true,
-            payment_date: now,
+            is_paid: newStatus,
+            payment_date: newStatus ? now : null,
           });
 
         // Verificar se todas as parcelas da transação foram pagas
@@ -493,18 +679,27 @@ export default {
           .count("* as count")
           .first();
 
+        // Atualizar status da transaction baseado nas parcelas
         if (parseInt(unpaidCount.count) === 0) {
-          // Marcar transaction como paga também
+          // Todas as parcelas foram pagas, marcar transaction como paga
           await db("transactions")
             .where("id", installment.transaction_id)
             .update({
               is_paid: true,
               payment_date: now,
             });
+        } else {
+          // Ainda há parcelas não pagas, marcar transaction como não paga
+          await db("transactions")
+            .where("id", installment.transaction_id)
+            .update({
+              is_paid: false,
+              payment_date: null,
+            });
         }
 
         return res.status(200).json({
-          message: "Parcela marcada como paga com sucesso!",
+          message: newStatus ? "Parcela marcada como paga com sucesso!" : "Parcela marcada como não paga com sucesso!",
         });
       }
     } catch (error) {
@@ -542,17 +737,55 @@ export default {
         });
       }
 
-      // Verificar se tem parcelas (não permitir edição de receitas parceladas por este endpoint)
+      // Verificar se tem parcelas
       const hasInstallments = await db("installments")
         .where("transaction_id", id)
         .first();
 
       if (hasInstallments) {
-        return res.status(400).json({
-          error: "Receitas parceladas não podem ser editadas por este endpoint.",
+        // Para receitas parceladas, permitir editar apenas: title, description, paymentType, patientId
+        if (!title || !paymentType) {
+          return res.status(400).json({
+            error: "Os campos título e tipo de pagamento são obrigatórios.",
+          });
+        }
+
+        const validPaymentTypes = ["Dinheiro", "PIX", "Cartão", "Transferência"];
+        if (!validPaymentTypes.includes(paymentType)) {
+          return res.status(400).json({
+            error: "Tipo de pagamento inválido.",
+          });
+        }
+
+        // Verificar se paciente existe (se fornecido)
+        if (patientId) {
+          const patient = await db("patients")
+            .where({ id: patientId, user_id: userId })
+            .first();
+          if (!patient) {
+            return res.status(404).json({
+              error: "Paciente não encontrado.",
+            });
+          }
+        }
+
+        // Atualizar apenas os campos permitidos para receitas parceladas
+        await db("transactions")
+          .where("id", id)
+          .update({
+            title,
+            description: description || null,
+            patient_id: patientId || null,
+            payment_type: paymentType,
+            updated_at: db.fn.now(),
+          });
+
+        return res.status(200).json({
+          message: "Receita parcelada atualizada com sucesso!",
         });
       }
 
+      // Para receitas simples, validações completas
       // Validações
       if (!title || !amount || !dueDate || !paymentType) {
         return res.status(400).json({
@@ -657,6 +890,106 @@ export default {
     }
   },
 
+  async deleteInstallment(req, res) {
+    try {
+      const userId = req.user.user_id;
+      const { id } = req.params;
+      const { option } = req.query; // 'single', 'from-this', 'all'
+
+      // Verificar se a parcela existe e pertence ao usuário (pode ser income ou expense)
+      const installment = await db("installments")
+        .join("transactions", "installments.transaction_id", "transactions.id")
+        .where("installments.id", id)
+        .where("transactions.user_id", userId)
+        .whereIn("transactions.type", ["income", "expense"])
+        .select(
+          "installments.*",
+          "transactions.id as transaction_id",
+          "transactions.user_id",
+          "transactions.type"
+        )
+        .first();
+
+      if (!installment) {
+        return res.status(404).json({
+          error: "Parcela não encontrada ou sem permissão.",
+        });
+      }
+
+      if (option === "single") {
+        // Deletar apenas esta parcela
+        await db("installments")
+          .where("id", id)
+          .delete();
+
+        // Verificar se ainda restam parcelas
+        const remainingCount = await db("installments")
+          .where("transaction_id", installment.transaction_id)
+          .count("* as count")
+          .first();
+
+        // Se não restarem parcelas, deletar a transaction também
+        if (parseInt(remainingCount.count) === 0) {
+          await db("transactions")
+            .where("id", installment.transaction_id)
+            .delete();
+        }
+
+        return res.status(200).json({
+          message: "Parcela deletada com sucesso!",
+        });
+      } else if (option === "from-this") {
+        // Deletar esta parcela e as próximas
+        const installmentNumber = installment.installment_number;
+        
+        await db("installments")
+          .where("transaction_id", installment.transaction_id)
+          .where("installment_number", ">=", installmentNumber)
+          .delete();
+
+        // Verificar se ainda restam parcelas
+        const remainingCount = await db("installments")
+          .where("transaction_id", installment.transaction_id)
+          .count("* as count")
+          .first();
+
+        // Se não restarem parcelas, deletar a transaction também
+        if (parseInt(remainingCount.count) === 0) {
+          await db("transactions")
+            .where("id", installment.transaction_id)
+            .delete();
+        }
+
+        return res.status(200).json({
+          message: "Parcela e próximas deletadas com sucesso!",
+        });
+      } else if (option === "all") {
+        // Deletar toda a transação (todas as parcelas)
+        await db("installments")
+          .where("transaction_id", installment.transaction_id)
+          .delete();
+
+        await db("transactions")
+          .where("id", installment.transaction_id)
+          .delete();
+
+        return res.status(200).json({
+          message: "Toda a recorrência deletada com sucesso!",
+        });
+      } else {
+        return res.status(400).json({
+          error: "Opção inválida. Use: 'single', 'from-this' ou 'all'.",
+        });
+      }
+    } catch (error) {
+      console.error("Erro ao deletar parcela:", error);
+      return res.status(500).json({
+        error: "Erro ao deletar parcela.",
+        details: error.message,
+      });
+    }
+  },
+
   async updateExpense(req, res) {
     try {
       const userId = req.user.user_id;
@@ -683,6 +1016,42 @@ export default {
         });
       }
 
+      // Verificar se tem parcelas (installments)
+      const hasInstallments = await db("installments")
+        .where("transaction_id", id)
+        .first();
+
+      if (hasInstallments) {
+        // Para despesas recorrentes (com parcelas), permitir editar apenas: title, description, paymentType
+        if (!title || !paymentType) {
+          return res.status(400).json({
+            error: "Os campos título e tipo de pagamento são obrigatórios.",
+          });
+        }
+
+        const validPaymentTypes = ["Dinheiro", "PIX", "Cartão", "Transferência"];
+        if (!validPaymentTypes.includes(paymentType)) {
+          return res.status(400).json({
+            error: "Tipo de pagamento inválido.",
+          });
+        }
+
+        // Atualizar apenas os campos permitidos para despesas recorrentes
+        await db("transactions")
+          .where("id", id)
+          .update({
+            title,
+            description: description || null,
+            payment_type: paymentType,
+            updated_at: db.fn.now(),
+          });
+
+        return res.status(200).json({
+          message: "Despesa recorrente atualizada com sucesso!",
+        });
+      }
+
+      // Para despesas simples, validações completas
       // Validações
       if (!title || !amount || !dueDate || !paymentType) {
         return res.status(400).json({
@@ -772,6 +1141,18 @@ export default {
         });
       }
 
+      // Verificar se tem parcelas
+      const hasInstallments = await db("installments")
+        .where("transaction_id", id)
+        .first();
+
+      if (hasInstallments) {
+        // Deletar parcelas primeiro
+        await db("installments")
+          .where("transaction_id", id)
+          .delete();
+      }
+
       // Deletar transaction
       await db("transactions")
         .where("id", id)
@@ -814,14 +1195,14 @@ export default {
         });
       }
 
-      // Verificar se tem parcelas (não permitir alterar status de receitas parceladas por este endpoint)
+      // Verificar se tem parcelas (não permitir alterar status de transações parceladas por este endpoint)
       const hasInstallments = await db("installments")
         .where("transaction_id", id)
         .first();
 
       if (hasInstallments) {
         return res.status(400).json({
-          error: "Receitas parceladas não podem ter status alterado por este endpoint.",
+          error: "Transações parceladas não podem ter status alterado por este endpoint. Use o endpoint de parcelas.",
         });
       }
 
