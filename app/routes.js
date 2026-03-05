@@ -65,6 +65,7 @@ routes.delete("/cashflow/expense/:id", authMiddleware, CashFlowController.delete
 routes.put("/cashflow/transactions/:id/toggle-paid", authMiddleware, CashFlowController.togglePaidStatus);
 routes.get("/cashflow/receivables", authMiddleware, CashFlowController.getReceivables);
 routes.put("/cashflow/installments/:id/pay", authMiddleware, CashFlowController.markInstallmentAsPaid);
+routes.delete("/cashflow/installments/:id", authMiddleware, CashFlowController.deleteInstallment);
 
 routes.get("/test_auth_middleware", authMiddleware, (req, res) => {
   res.json({ message: "Acesso autorizado!", user: req.user });
