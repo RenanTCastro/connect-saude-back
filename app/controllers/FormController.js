@@ -1,6 +1,23 @@
 import db from "../database/index.js";
 
 export default {
+  async getAllForms(req, res) {
+    try {
+      // Buscar todos os formulários
+      const forms = await db("forms")
+        .select("id_form", "name", "description", "type")
+        .orderBy("id_form", "asc");
+
+      return res.status(200).json(forms);
+    } catch (error) {
+      console.error("Erro ao buscar formulários:", error);
+      return res.status(500).json({
+        error: "Erro ao buscar formulários.",
+        details: error.message,
+      });
+    }
+  },
+
   async getFormById(req, res) {
     try {
       const { id_form } = req.params;

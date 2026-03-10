@@ -56,6 +56,7 @@ routes.post("/appointments", authMiddleware, AppointmentController.createAppoint
 routes.put("/appointments/:id", authMiddleware, AppointmentController.updateAppointment);
 routes.delete("/appointments/:id", authMiddleware, AppointmentController.deleteAppointment);
 
+routes.get("/forms", authMiddleware, FormController.getAllForms);
 routes.get("/forms/:id_form", authMiddleware, FormController.getFormById);
 routes.post("/forms/response", authMiddleware, FormController.submitFormResponse);
 routes.get("/patients/:patient_id/forms/:id_form", authMiddleware, FormController.getPatientForm);
