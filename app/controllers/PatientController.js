@@ -22,6 +22,11 @@ export default {
         birth_date,
         cpf,
         rg,
+        responsible_name,
+        responsible_cpf,
+        responsible_phone,
+        responsible_email,
+        responsible_relationship,
       } = req.body;
 
       if (!full_name || !cpf) {
@@ -63,6 +68,11 @@ export default {
           birth_date,
           cpf,
           rg,
+          responsible_name,
+          responsible_cpf,
+          responsible_phone,
+          responsible_email,
+          responsible_relationship,
           created_at: db.fn.now(),
           updated_at: db.fn.now(),
         })
@@ -168,6 +178,11 @@ export default {
         birth_date,
         cpf,
         rg,
+        responsible_name,
+        responsible_cpf,
+        responsible_phone,
+        responsible_email,
+        responsible_relationship,
       } = req.body;
 
       // Verificar se já existe outro paciente com o mesmo CPF para este usuário
@@ -200,6 +215,11 @@ export default {
             birth_date,
             cpf,
             rg,
+            responsible_name,
+            responsible_cpf,
+            responsible_phone,
+            responsible_email,
+            responsible_relationship,
             updated_at: db.fn.now(),
           },
         );
