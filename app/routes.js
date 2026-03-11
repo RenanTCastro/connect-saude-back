@@ -11,6 +11,7 @@ const LabelController = require("./controllers/LabelController").default;
 const AppointmentController = require("./controllers/AppointmentController").default;
 const CashFlowController = require("./controllers/CashFlowController").default;
 const SubscriptionController = require("./controllers/SubscriptionController").default;
+const FormController = require("./controllers/FormController").default;
 
 routes.post("/login", UserController.login); 
 routes.post("/register", UserController.register);
@@ -54,6 +55,11 @@ routes.get("/appointments/:id", authMiddleware, AppointmentController.getAppoint
 routes.post("/appointments", authMiddleware, AppointmentController.createAppointment);
 routes.put("/appointments/:id", authMiddleware, AppointmentController.updateAppointment);
 routes.delete("/appointments/:id", authMiddleware, AppointmentController.deleteAppointment);
+
+routes.get("/forms", authMiddleware, FormController.getAllForms);
+routes.get("/forms/:id_form", authMiddleware, FormController.getFormById);
+routes.post("/forms/response", authMiddleware, FormController.submitFormResponse);
+routes.get("/patients/:patient_id/forms/:id_form", authMiddleware, FormController.getPatientForm);
 
 routes.get("/cashflow/period", authMiddleware, CashFlowController.getPeriodData);
 routes.post("/cashflow/income", authMiddleware, CashFlowController.createIncome);
