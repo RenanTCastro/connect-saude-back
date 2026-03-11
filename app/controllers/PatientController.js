@@ -21,6 +21,7 @@ export default {
         zip_code,
         birth_date,
         cpf,
+        rg,
       } = req.body;
 
       if (!full_name || !cpf) {
@@ -61,6 +62,7 @@ export default {
           zip_code,
           birth_date,
           cpf,
+          rg,
           created_at: db.fn.now(),
           updated_at: db.fn.now(),
         })
@@ -165,13 +167,15 @@ export default {
         zip_code,
         birth_date,
         cpf,
+        rg,
       } = req.body;
 
       // Verificar se já existe outro paciente com o mesmo CPF para este usuário
-      if (cpf) {
+      if (cpf && cpf.trim() !== "") {
+        const patientId = parseInt(id);
         const existingPatient = await db("patients")
-          .where({ user_id: userId, cpf: cpf })
-          .whereNot({ id: id })
+          .where({ user_id: userId, cpf: cpf.trim() })
+          .whereNot({ id: patientId })
           .first();
 
         if (existingPatient) {
@@ -195,6 +199,7 @@ export default {
             zip_code,
             birth_date,
             cpf,
+            rg,
             updated_at: db.fn.now(),
           },
         );
