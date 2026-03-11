@@ -63,9 +63,9 @@ export default {
       // Cria os estágios padrões de venda
       const defaultStages = [
         { name: "Primeiro Contato", order_position: 1 },
-        { name: "Pendentes", order_position: 2 },
-        { name: "Negociação", order_position: 3 },
-        { name: "Fechamento", order_position: 4 },
+        { name: "Negociação", order_position: 2 },
+        { name: "Fechado - ganho", order_position: 3 },
+        { name: "Fechado - perdido", order_position: 4 },
       ];
 
       await db("sales_stages").insert(
