@@ -1,0 +1,19 @@
+/**
+ * @param { import("knex").Knex } knex
+ * @returns { Promise<void> }
+ */
+exports.up = function(knex) {
+  return knex.schema.table('patients', table => {
+    table.string('complement', 255);
+  });
+};
+
+/**
+ * @param { import("knex").Knex } knex
+ * @returns { Promise<void> }
+ */
+exports.down = function(knex) {
+  return knex.schema.table('patients', table => {
+    table.dropColumn('complement');
+  });
+};
