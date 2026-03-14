@@ -12,6 +12,8 @@ const AppointmentController = require("./controllers/AppointmentController").def
 const CashFlowController = require("./controllers/CashFlowController").default;
 const SubscriptionController = require("./controllers/SubscriptionController").default;
 const FormController = require("./controllers/FormController").default;
+const AttachmentController = require("./controllers/AttachmentController").default;
+const FolderController = require("./controllers/FolderController").default;
 
 routes.post("/login", UserController.login); 
 routes.post("/register", UserController.register);
@@ -24,6 +26,19 @@ routes.get("/patients/:id/invoices", authMiddleware, PatientController.getPatien
 routes.post("/patients", authMiddleware, PatientController.createPatient);
 routes.put("/patients/:id", authMiddleware, PatientController.updatePatient);
 routes.delete("/patients/:id", authMiddleware, PatientController.deletePatient);
+
+// Rotas de anexos
+routes.post("/patients/:id/attachments/upload-url", authMiddleware, AttachmentController.generateUploadUrl);
+routes.post("/patients/:id/attachments/confirm", authMiddleware, AttachmentController.confirmUpload);
+routes.get("/patients/:id/attachments", authMiddleware, AttachmentController.getAttachments);
+routes.get("/attachments/:id/download-url", authMiddleware, AttachmentController.getDownloadUrl);
+routes.delete("/attachments/:id", authMiddleware, AttachmentController.deleteAttachment);
+
+// Rotas de pastas
+routes.post("/patients/:id/folders", authMiddleware, FolderController.createFolder);
+routes.put("/folders/:id", authMiddleware, FolderController.updateFolder);
+routes.delete("/folders/:id", authMiddleware, FolderController.deleteFolder);
+routes.put("/attachments/:id/move", authMiddleware, FolderController.moveAttachment);
 
 routes.get("/inventory", authMiddleware, InventoryController.getInventoryItems);
 routes.post("/inventory", authMiddleware, InventoryController.createInventoryItem);

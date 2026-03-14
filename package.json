@@ -21,6 +21,8 @@
   },
   "homepage": "https://github.com/RenanTCastro/connect-saude-back#readme",
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.1009.0",
+    "@aws-sdk/s3-request-presigner": "^3.1009.0",
     "bcrypt": "^6.0.0",
     "cors": "^2.8.5",
     "dayjs": "^1.11.19",
