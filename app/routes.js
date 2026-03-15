@@ -43,6 +43,7 @@ routes.put("/attachments/:id/move", authMiddleware, FolderController.moveAttachm
 routes.get("/inventory", authMiddleware, InventoryController.getInventoryItems);
 routes.post("/inventory", authMiddleware, InventoryController.createInventoryItem);
 routes.put("/inventory/:id", authMiddleware, InventoryController.updateInventoryItem);
+routes.put("/inventory/:id/adjust-quantity", authMiddleware, InventoryController.adjustInventoryQuantity);
 routes.delete("/inventory/:id", authMiddleware, InventoryController.deleteInventoryItem);
 
 routes.get("/sales/stages", authMiddleware, SalesController.getSalesStages);
