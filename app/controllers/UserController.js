@@ -3,6 +3,7 @@ import bcrypt from "bcrypt";
 import dotenv from "dotenv";
 import jwt from "jsonwebtoken";
 import { generateJwt } from "../utils/jwt.js";
+import { createDefaultForms } from "../database/seeders/defaultForms.js";
 
 dotenv.config();
 
@@ -76,6 +77,14 @@ export default {
           created_at: db.fn.now(),
         }))
       );
+
+      // Cria os formulários padrão de anamnese
+      try {
+        await createDefaultForms(userId);
+      } catch (formError) {
+        console.error("Erro ao criar formulários padrão:", formError);
+        // Não falha o registro se houver erro ao criar formulários
+      }
 
       return res.status(201).json({ 
         message: "Usuário registrado com sucesso" 

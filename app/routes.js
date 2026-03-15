@@ -73,6 +73,10 @@ routes.delete("/appointments/:id", authMiddleware, AppointmentController.deleteA
 
 routes.get("/forms", authMiddleware, FormController.getAllForms);
 routes.get("/forms/:id_form", authMiddleware, FormController.getFormById);
+routes.post("/forms", authMiddleware, FormController.createForm);
+routes.put("/forms/:id_form", authMiddleware, FormController.updateForm);
+routes.delete("/forms/:id_form", authMiddleware, FormController.deleteForm);
+routes.post("/forms/:id_form/duplicate", authMiddleware, FormController.duplicateForm);
 routes.post("/forms/response", authMiddleware, FormController.submitFormResponse);
 routes.get("/patients/:patient_id/forms/:id_form", authMiddleware, FormController.getPatientForm);
 
