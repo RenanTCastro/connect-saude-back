@@ -1,5 +1,19 @@
 import db from "../database/index.js";
 
+async function recordQuantityHistory(inventoryItemId, userId, previousQuantity, newQuantity, type, notes = null) {
+  const changeAmount = newQuantity - previousQuantity;
+  if (changeAmount === 0) return;
+  await db("inventory_quantity_history").insert({
+    inventory_item_id: inventoryItemId,
+    user_id: userId,
+    previous_quantity: previousQuantity,
+    new_quantity: newQuantity,
+    change_amount: changeAmount,
+    type,
+    notes,
+  });
+}
+
 export default {
   async getInventoryItems(req, res) {
     try {
@@ -37,15 +51,19 @@ export default {
         });
       }
 
-      await db("inventory_items")
-        .insert({
-          user_id: userId,
-          name,
-          quantity,
-          ideal_quantity: ideal_quantity || null,
-          created_at: db.fn.now(),
-          updated_at: db.fn.now(),
-        })
+      await db("inventory_items").insert({
+        user_id: userId,
+        name,
+        quantity,
+        ideal_quantity: ideal_quantity || null,
+        created_at: db.fn.now(),
+        updated_at: db.fn.now(),
+      });
+
+      const item = await db("inventory_items").where({ user_id: userId, name }).orderBy("id", "desc").first();
+      if (item && quantity > 0) {
+        await recordQuantityHistory(item.id, userId, 0, quantity, "entrada_inicial");
+      }
 
       return res.status(201).json({ message: "Item criado com sucesso!" });
     } catch (error) {
@@ -72,7 +90,15 @@ export default {
       const updateData = { updated_at: db.fn.now() };
       if (name !== undefined) updateData.name = name;
       if (ideal_quantity !== undefined) updateData.ideal_quantity = ideal_quantity || null;
-      if (quantity !== undefined) updateData.quantity = quantity;
+
+      if (quantity !== undefined) {
+        const item = await db("inventory_items").where({ id, user_id: userId }).first();
+        if (item && item.quantity !== quantity) {
+          const type = quantity > item.quantity ? "entrada" : "saida";
+          await recordQuantityHistory(id, userId, item.quantity, quantity, type);
+        }
+        updateData.quantity = quantity;
+      }
 
       const updated = await db("inventory_items")
         .where({ id, user_id: userId })
@@ -119,6 +145,9 @@ export default {
         newQuantity = Math.max(0, item.quantity - amount);
       }
 
+      const type = operation === 'add' ? 'entrada' : 'saida';
+      await recordQuantityHistory(id, userId, item.quantity, newQuantity, type);
+
       const updated = await db("inventory_items")
         .where({ id, user_id: userId })
         .update({ 
@@ -138,6 +167,41 @@ export default {
       console.error("Erro ao alterar quantidade:", error);
       return res.status(500).json({
         error: "Erro ao alterar quantidade.",
+        details: error.message,
+      });
+    }
+  },
+
+  async getInventoryHistory(req, res) {
+    try {
+      const { id } = req.params;
+      const userId = req.user.user_id;
+
+      const item = await db("inventory_items")
+        .where({ id, user_id: userId })
+        .first();
+
+      if (!item) {
+        return res.status(404).json({ error: "Item não encontrado ou sem permissão." });
+      }
+
+      const history = await db("inventory_quantity_history")
+        .select(
+          "inventory_quantity_history.*",
+          "users.name as user_name"
+        )
+        .leftJoin("users", "inventory_quantity_history.user_id", "users.id")
+        .where("inventory_quantity_history.inventory_item_id", id)
+        .orderBy("inventory_quantity_history.created_at", "desc");
+
+      return res.status(200).json({
+        item: { id: item.id, name: item.name },
+        history,
+      });
+    } catch (error) {
+      console.error("Erro ao buscar histórico do estoque:", error);
+      return res.status(500).json({
+        error: "Erro ao buscar histórico.",
         details: error.message,
       });
     }
