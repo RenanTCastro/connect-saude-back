@@ -1,4 +1,6 @@
 import db from "../database/index.js";
+import s3Client from "../config/aws.js";
+import { DeleteObjectCommand } from "@aws-sdk/client-s3";
 
 // Helper para validar que o paciente pertence ao usuário
 async function validatePatientOwnership(userId, patientId) {
@@ -143,6 +145,11 @@ export default {
       // Validar que o paciente pertence ao usuário
       await validatePatientOwnership(userId, folder.patient_id);
 
+      // Zerar referências em evolution_entries (se apagar pasta em Anexos, some o vínculo na Evolução)
+      await db("evolution_entries")
+        .where({ folder_id: folderId })
+        .update({ folder_id: null, updated_at: db.fn.now() });
+
       // Verificar se pasta tem subpastas
       const subfolders = await db("patient_folders")
         .where({ parent_id: folderId })
@@ -155,16 +162,21 @@ export default {
         });
       }
 
-      // Verificar se pasta tem anexos
+      // Cascade: deletar anexos da pasta (S3 + DB) para permitir exclusão da pasta
       const attachments = await db("patient_attachments")
-        .where({ folder_id: folderId })
-        .count("* as count")
-        .first();
+        .where({ folder_id: folderId });
 
-      if (parseInt(attachments.count) > 0) {
-        return res.status(400).json({
-          error: "Não é possível deletar pasta que contém anexos.",
-        });
+      for (const att of attachments) {
+        try {
+          const command = new DeleteObjectCommand({
+            Bucket: att.s3_bucket,
+            Key: att.s3_key,
+          });
+          await s3Client.send(command);
+        } catch (s3Error) {
+          console.error("Erro ao deletar do S3:", s3Error);
+        }
+        await db("patient_attachments").where({ id: att.id }).delete();
       }
 
       // Deletar pasta (hard delete)

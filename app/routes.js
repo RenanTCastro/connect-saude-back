@@ -14,6 +14,10 @@ const SubscriptionController = require("./controllers/SubscriptionController").d
 const FormController = require("./controllers/FormController").default;
 const AttachmentController = require("./controllers/AttachmentController").default;
 const FolderController = require("./controllers/FolderController").default;
+const ProcedureController = require("./controllers/ProcedureController").default;
+const TreatmentController = require("./controllers/TreatmentController").default;
+const OdontogramAnnotationController = require("./controllers/OdontogramAnnotationController").default;
+const EvolutionEntryController = require("./controllers/EvolutionEntryController").default;
 
 routes.post("/login", UserController.login); 
 routes.post("/register", UserController.register);
@@ -39,6 +43,28 @@ routes.post("/patients/:id/folders", authMiddleware, FolderController.createFold
 routes.put("/folders/:id", authMiddleware, FolderController.updateFolder);
 routes.delete("/folders/:id", authMiddleware, FolderController.deleteFolder);
 routes.put("/attachments/:id/move", authMiddleware, FolderController.moveAttachment);
+
+// Procedimentos (busca por nome/TUSS e criação de personalizados)
+routes.get("/procedures", authMiddleware, ProcedureController.list);
+routes.post("/procedures", authMiddleware, ProcedureController.create);
+
+// Tratamentos do paciente
+routes.get("/patients/:id/treatments", authMiddleware, TreatmentController.list);
+routes.post("/patients/:id/treatments", authMiddleware, TreatmentController.create);
+routes.put("/treatments/:id", authMiddleware, TreatmentController.update);
+
+// Anotações do odontograma
+routes.get("/patients/:id/odontogram-annotations", authMiddleware, OdontogramAnnotationController.list);
+routes.post("/patients/:id/odontogram-annotations", authMiddleware, OdontogramAnnotationController.create);
+routes.put("/odontogram-annotations/:id", authMiddleware, OdontogramAnnotationController.update);
+routes.delete("/odontogram-annotations/:id", authMiddleware, OdontogramAnnotationController.delete);
+
+// Evolução do paciente (pasta tratamento/tratamento_1 em Anexos)
+routes.get("/patients/:id/evolution-folder", authMiddleware, EvolutionEntryController.getOrCreateEvolutionFolder);
+routes.get("/patients/:id/evolution-entries", authMiddleware, EvolutionEntryController.list);
+routes.post("/patients/:id/evolution-entries", authMiddleware, EvolutionEntryController.create);
+routes.put("/evolution-entries/:id", authMiddleware, EvolutionEntryController.update);
+routes.delete("/evolution-entries/:id", authMiddleware, EvolutionEntryController.delete);
 
 routes.get("/inventory", authMiddleware, InventoryController.getInventoryItems);
 routes.get("/inventory/:id/history", authMiddleware, InventoryController.getInventoryHistory);
