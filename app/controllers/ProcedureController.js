@@ -6,7 +6,9 @@ export default {
       const userId = req.user.user_id;
       const { q } = req.query;
 
-      let query = db("procedures").where({ user_id: userId });
+      let query = db("procedures").where((builder) => {
+        builder.where({ user_id: userId }).orWhereNull("user_id");
+      });
 
       if (q && String(q).trim()) {
         const term = `%${String(q).trim().toLowerCase()}%`;

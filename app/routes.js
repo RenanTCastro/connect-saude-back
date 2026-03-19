@@ -52,6 +52,7 @@ routes.post("/procedures", authMiddleware, ProcedureController.create);
 routes.get("/patients/:id/treatments", authMiddleware, TreatmentController.list);
 routes.post("/patients/:id/treatments", authMiddleware, TreatmentController.create);
 routes.put("/treatments/:id", authMiddleware, TreatmentController.update);
+routes.delete("/treatments/:id", authMiddleware, TreatmentController.delete);
 
 // Anotações do odontograma
 routes.get("/patients/:id/odontogram-annotations", authMiddleware, OdontogramAnnotationController.list);

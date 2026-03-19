@@ -81,6 +81,39 @@ export default {
     }
   },
 
+  async delete(req, res) {
+    try {
+      const userId = req.user.user_id;
+      const treatmentId = parseInt(req.params.id);
+
+      const treatment = await db("patient_treatments")
+        .where({ id: treatmentId })
+        .first();
+
+      if (!treatment) {
+        return res.status(404).json({ error: "Tratamento não encontrado." });
+      }
+
+      await validatePatientOwnership(userId, treatment.patient_id);
+
+      const deletedCount = await db("patient_treatments")
+        .where({ id: treatmentId })
+        .del();
+
+      if (!deletedCount) {
+        return res.status(404).json({ error: "Tratamento não encontrado." });
+      }
+
+      return res.status(200).json({ success: true });
+    } catch (error) {
+      console.error("Erro ao excluir tratamento:", error);
+      return res.status(500).json({
+        error: "Erro ao excluir tratamento.",
+        details: error.message,
+      });
+    }
+  },
+
   async update(req, res) {
     try {
       const userId = req.user.user_id;

@@ -7,7 +7,8 @@
     "start": "node app/index.js",
     "test": "echo \"Error: no test specified\" && exit 1",
     "dev": "nodemon app/index.js",
-    "migrate": "knex migrate:latest"
+    "migrate": "knex migrate:latest",
+    "seed:tuss": "node scripts/seed-tuss-procedures.js"
   },
   "repository": {
     "type": "git",
