@@ -8,7 +8,8 @@
     "test": "echo \"Error: no test specified\" && exit 1",
     "dev": "nodemon app/index.js",
     "migrate": "knex migrate:latest",
-    "seed:tuss": "node scripts/seed-tuss-procedures.js"
+    "seed:tuss": "node scripts/seed-tuss-procedures.js",
+    "seed:medications": "node scripts/seed-prescription-medications.js"
   },
   "repository": {
     "type": "git",

@@ -15,6 +15,7 @@ const FormController = require("./controllers/FormController").default;
 const AttachmentController = require("./controllers/AttachmentController").default;
 const FolderController = require("./controllers/FolderController").default;
 const ProcedureController = require("./controllers/ProcedureController").default;
+const PrescriptionMedicationController = require("./controllers/PrescriptionMedicationController").default;
 const TreatmentController = require("./controllers/TreatmentController").default;
 const OdontogramAnnotationController = require("./controllers/OdontogramAnnotationController").default;
 const EvolutionEntryController = require("./controllers/EvolutionEntryController").default;
@@ -47,6 +48,10 @@ routes.put("/attachments/:id/move", authMiddleware, FolderController.moveAttachm
 // Procedimentos (busca por nome/TUSS e criação de personalizados)
 routes.get("/procedures", authMiddleware, ProcedureController.list);
 routes.post("/procedures", authMiddleware, ProcedureController.create);
+
+// Medicamentos para receituário (busca termo + apresentação)
+routes.get("/prescription-medications", authMiddleware, PrescriptionMedicationController.list);
+routes.post("/prescription-medications", authMiddleware, PrescriptionMedicationController.create);
 
 // Tratamentos do paciente
 routes.get("/patients/:id/treatments", authMiddleware, TreatmentController.list);
