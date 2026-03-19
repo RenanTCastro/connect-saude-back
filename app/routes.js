@@ -24,6 +24,9 @@ routes.post("/login", UserController.login);
 routes.post("/register", UserController.register);
 routes.get("/me", authMiddleware, UserController.getProfile);
 routes.put("/me", authMiddleware, UserController.updateProfile);
+routes.post("/me/logo/upload-url", authMiddleware, UserController.generateLogoUploadUrl);
+routes.get("/me/logo/url", authMiddleware, UserController.getLogoUrl);
+routes.delete("/me/logo", authMiddleware, UserController.deleteLogo);
 
 routes.get("/patients", authMiddleware, PatientController.getPatients);
 routes.get("/patients/:id", authMiddleware, PatientController.getPatientById);

@@ -2,10 +2,17 @@ import db from "../database/index.js";
 import bcrypt from "bcrypt";
 import dotenv from "dotenv";
 import jwt from "jsonwebtoken";
+import { randomUUID } from "crypto";
 import { generateJwt } from "../utils/jwt.js";
 import { createDefaultForms } from "../database/seeders/defaultForms.js";
+import s3Client, { S3_BUCKET_NAME } from "../config/aws.js";
+import { PutObjectCommand, GetObjectCommand, DeleteObjectCommand } from "@aws-sdk/client-s3";
+import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 
 dotenv.config();
+
+const MAX_LOGO_SIZE = 15 * 1024 * 1024; // 15MB
+const ALLOWED_LOGO_TYPES = ["image/jpeg", "image/png", "image/webp"];
 
 export default {
   async register(req, res, next) {
@@ -191,7 +198,17 @@ export default {
 
       const user = await db("users")
         .where({ id: userId })
-        .first("id", "name", "email", "phone");
+        .first(
+          "id",
+          "name",
+          "email",
+          "phone",
+          "address",
+          "cro_number",
+          "professional_phone",
+          "specialty",
+          "logo_s3_key"
+        );
 
       if (!user) {
         return res.status(404).json({
@@ -225,7 +242,15 @@ export default {
         });
       }
 
-      const { name, phone } = req.body;
+      const {
+        name,
+        phone,
+        address,
+        cro_number,
+        professional_phone,
+        specialty,
+        logo_s3_key,
+      } = req.body;
 
       if (!name) {
         return res.status(400).json({
@@ -237,15 +262,44 @@ export default {
         name: name.trim(),
       };
 
-      if (phone !== undefined) {
-        updateData.phone = phone;
+      if (phone !== undefined) updateData.phone = phone;
+      if (address !== undefined) updateData.address = address?.trim() || null;
+      if (cro_number !== undefined) updateData.cro_number = cro_number?.trim() || null;
+      if (professional_phone !== undefined)
+        updateData.professional_phone = professional_phone?.trim() || null;
+      if (specialty !== undefined) updateData.specialty = specialty?.trim() || null;
+
+      if (logo_s3_key !== undefined) {
+        const currentUser = await db("users").where({ id: userId }).first("logo_s3_key");
+        const oldLogoKey = currentUser?.logo_s3_key;
+
+        if (oldLogoKey && oldLogoKey !== logo_s3_key) {
+          try {
+            await s3Client.send(
+              new DeleteObjectCommand({ Bucket: S3_BUCKET_NAME, Key: oldLogoKey })
+            );
+          } catch (s3Err) {
+            console.error("Erro ao deletar logo antiga do S3:", s3Err);
+          }
+        }
+        updateData.logo_s3_key = logo_s3_key || null;
       }
 
       await db("users").where({ id: userId }).update(updateData);
 
       const updatedUser = await db("users")
         .where({ id: userId })
-        .first("id", "name", "email", "phone");
+        .first(
+          "id",
+          "name",
+          "email",
+          "phone",
+          "address",
+          "cro_number",
+          "professional_phone",
+          "specialty",
+          "logo_s3_key"
+        );
 
       return res.status(200).json({
         message: "Perfil atualizado com sucesso",
@@ -262,6 +316,119 @@ export default {
 
       return res.status(500).json({
         error: "Erro interno do servidor ao atualizar perfil do usuário",
+      });
+    }
+  },
+
+  async generateLogoUploadUrl(req, res) {
+    try {
+      const userId = req.user?.user_id;
+      if (!userId) {
+        return res.status(401).json({ error: "Usuário não autenticado" });
+      }
+
+      const { fileName, fileSize, mimeType } = req.body;
+      if (!fileName || !fileSize) {
+        return res.status(400).json({
+          error: "Campos 'fileName' e 'fileSize' são obrigatórios.",
+        });
+      }
+
+      if (fileSize > MAX_LOGO_SIZE) {
+        return res.status(400).json({
+          error: "Arquivo muito grande! O tamanho máximo permitido é 15MB.",
+        });
+      }
+
+      const allowed = ALLOWED_LOGO_TYPES.includes(mimeType);
+      if (!allowed) {
+        return res.status(400).json({
+          error: "Formato não permitido. Use JPEG, PNG ou WebP.",
+        });
+      }
+
+      const fileId = randomUUID();
+      const timestamp = Date.now();
+      const sanitizedFileName = fileName.replace(/[^a-zA-Z0-9._-]/g, "_");
+      const s3Key = `users/${userId}/logo/${fileId}-${timestamp}-${sanitizedFileName}`;
+
+      const command = new PutObjectCommand({
+        Bucket: S3_BUCKET_NAME,
+        Key: s3Key,
+        ContentType: mimeType || "image/jpeg",
+      });
+
+      const uploadUrl = await getSignedUrl(s3Client, command, { expiresIn: 300 });
+
+      return res.status(200).json({ uploadUrl, s3Key, fileId });
+    } catch (error) {
+      console.error("Erro ao gerar URL de upload da logo:", error);
+      return res.status(500).json({
+        error: "Erro ao gerar URL de upload da logo.",
+        details: error.message,
+      });
+    }
+  },
+
+  async getLogoUrl(req, res) {
+    try {
+      const userId = req.user?.user_id;
+      if (!userId) {
+        return res.status(401).json({ error: "Usuário não autenticado" });
+      }
+
+      const user = await db("users")
+        .where({ id: userId })
+        .first("logo_s3_key");
+
+      if (!user?.logo_s3_key) {
+        return res.status(404).json({ error: "Logo não encontrada." });
+      }
+
+      const command = new GetObjectCommand({
+        Bucket: S3_BUCKET_NAME,
+        Key: user.logo_s3_key,
+      });
+
+      const url = await getSignedUrl(s3Client, command, { expiresIn: 3600 });
+      return res.status(200).json({ url });
+    } catch (error) {
+      console.error("Erro ao obter URL da logo:", error);
+      return res.status(500).json({
+        error: "Erro ao obter URL da logo.",
+        details: error.message,
+      });
+    }
+  },
+
+  async deleteLogo(req, res) {
+    try {
+      const userId = req.user?.user_id;
+      if (!userId) {
+        return res.status(401).json({ error: "Usuário não autenticado" });
+      }
+
+      const user = await db("users").where({ id: userId }).first("logo_s3_key");
+      if (!user?.logo_s3_key) {
+        return res.status(404).json({ error: "Logo não encontrada." });
+      }
+
+      try {
+        await s3Client.send(
+          new DeleteObjectCommand({ Bucket: S3_BUCKET_NAME, Key: user.logo_s3_key })
+        );
+      } catch (s3Err) {
+        console.error("Erro ao deletar logo do S3:", s3Err);
+      }
+
+      await db("users").where({ id: userId }).update({ logo_s3_key: null });
+
+      return res.status(200).json({ message: "Logo removida com sucesso." });
+    } catch (error) {
+      console.error("Erro ao remover logo:", error);
+      return res.status(500).json({
+        error: "Erro ao remover logo.",
+        details: error.message,
       });
     }
   },
