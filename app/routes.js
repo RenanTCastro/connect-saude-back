@@ -17,6 +17,7 @@ const FolderController = require("./controllers/FolderController").default;
 const ProcedureController = require("./controllers/ProcedureController").default;
 const PrescriptionMedicationController = require("./controllers/PrescriptionMedicationController").default;
 const TreatmentController = require("./controllers/TreatmentController").default;
+const BudgetController = require("./controllers/BudgetController").default;
 const OdontogramAnnotationController = require("./controllers/OdontogramAnnotationController").default;
 const EvolutionEntryController = require("./controllers/EvolutionEntryController").default;
 
@@ -61,6 +62,13 @@ routes.get("/patients/:id/treatments", authMiddleware, TreatmentController.list)
 routes.post("/patients/:id/treatments", authMiddleware, TreatmentController.create);
 routes.put("/treatments/:id", authMiddleware, TreatmentController.update);
 routes.delete("/treatments/:id", authMiddleware, TreatmentController.delete);
+
+// Orçamentos do paciente
+routes.get("/patients/:id/budgets", authMiddleware, BudgetController.list);
+routes.post("/patients/:id/budgets", authMiddleware, BudgetController.create);
+routes.get("/budgets/:id", authMiddleware, BudgetController.get);
+routes.put("/budgets/:id", authMiddleware, BudgetController.update);
+routes.delete("/budgets/:id", authMiddleware, BudgetController.delete);
 
 // Anotações do odontograma
 routes.get("/patients/:id/odontogram-annotations", authMiddleware, OdontogramAnnotationController.list);
