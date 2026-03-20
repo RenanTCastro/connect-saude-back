@@ -27,10 +27,16 @@ export default {
       await validatePatientOwnership(userId, patientId);
 
       const budgets = await db("budgets")
-        .where({ patient_id: patientId })
-        .orderBy("budget_date", "desc")
-        .orderBy("created_at", "desc")
-        .select("*");
+        .leftJoin("budget_treatments", "budgets.id", "budget_treatments.budget_id")
+        .leftJoin("patient_treatments", "budget_treatments.treatment_id", "patient_treatments.id")
+        .where("budgets.patient_id", patientId)
+        .groupBy("budgets.id")
+        .select(
+          "budgets.*",
+          db.raw("COALESCE(SUM(patient_treatments.value), 0) - COALESCE(budgets.discount, 0) as total")
+        )
+        .orderBy("budgets.budget_date", "desc")
+        .orderBy("budgets.created_at", "desc");
 
       return res.status(200).json(budgets);
     } catch (error) {
