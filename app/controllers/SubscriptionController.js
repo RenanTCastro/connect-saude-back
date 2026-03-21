@@ -140,10 +140,7 @@ export default {
           .update({ stripe_customer_id: customerId });
       }
 
-      // Verificar se o usuário já teve assinatura antes (para não dar trial novamente)
-      const hasHadSubscription = !!user.subscription_id;
-      
-      // Criar sessão de checkout
+      // Criar sessão de checkout - cobrança imediata (trial de 7 dias é sem cartão, antes de assinar)
       const sessionConfig = {
         customer: customerId,
         mode: "subscription",
@@ -160,13 +157,6 @@ export default {
           user_id: userId.toString(),
         },
       };
-
-      // Adicionar trial de 7 dias apenas se o usuário nunca teve assinatura
-      if (!hasHadSubscription) {
-        sessionConfig.subscription_data = {
-          trial_period_days: 7, // 1 semana de teste grátis
-        };
-      }
 
       const session = await stripe.checkout.sessions.create(sessionConfig);
 
@@ -191,7 +181,8 @@ export default {
           "subscription_id",
           "subscription_status",
           "subscription_start_date",
-          "subscription_end_date"
+          "subscription_end_date",
+          "created_at"
         )
         .where({ id: userId })
         .first();
@@ -200,17 +191,44 @@ export default {
         return res.status(404).json({ error: "Usuário não encontrado" });
       }
 
-      // Se não tem customer_id, ainda não tem assinatura
+      // Trial gratuito de 7 dias SEM cartão: usuário sem assinatura pode usar por 7 dias após o cadastro
+      const TRIAL_DAYS = 7;
+      const hasFreeTrialAccess = !user.subscription_id && user.created_at;
+      let freeTrialEndDate = null;
+      if (user.created_at) {
+        const start = new Date(user.created_at);
+        freeTrialEndDate = new Date(start);
+        freeTrialEndDate.setDate(freeTrialEndDate.getDate() + TRIAL_DAYS);
+      }
+      const isWithinFreeTrial = hasFreeTrialAccess && freeTrialEndDate && new Date() < freeTrialEndDate;
+
+      if (isWithinFreeTrial) {
+        return res.json({
+          hasSubscription: false,
+          status: "trialing",
+          subscriptionId: null,
+          startDate: user.created_at,
+          endDate: freeTrialEndDate,
+          cancelAtPeriodEnd: false,
+          isTrialing: true,
+          hasAccess: true,
+        });
+      }
+
+      // Se não tem customer_id e trial expirou, sem acesso
       if (!user.stripe_customer_id) {
-      return res.json({
-        hasSubscription: false,
-        status: "inactive",
-        subscriptionId: null,
-        startDate: null,
-        endDate: null,
-        isTrialing: false,
-        hasAccess: false,
-      });
+        const trialExpired = hasFreeTrialAccess && freeTrialEndDate && new Date() >= freeTrialEndDate;
+        return res.json({
+          hasSubscription: false,
+          status: "inactive",
+          subscriptionId: null,
+          startDate: user.created_at,
+          endDate: freeTrialEndDate,
+          cancelAtPeriodEnd: false,
+          isTrialing: false,
+          hasAccess: false,
+          trialExpired,
+        });
       }
 
       let cancelAtPeriodEnd = false;
@@ -272,17 +290,18 @@ export default {
       }
 
       // Verificar se tem acesso (ativa ou trialing)
-      // Se está canceled, SEMPRE sem acesso, não verificar data
+      // Se está canceled, SEMPRE sem acesso (não verificar data)
       let hasAccess = false;
       if (user.subscription_status === "active" || user.subscription_status === "trialing") {
         hasAccess = true;
       } else if (user.subscription_status === "canceled") {
-        // Se cancelada, SEMPRE sem acesso (não verificar data)
         hasAccess = false;
       } else {
-        // Qualquer outro status (inactive, past_due, etc) = sem acesso
         hasAccess = false;
       }
+
+      // trialExpired: usuário teve trial gratuito (sem cartão) que expirou
+      const trialExpired = !user.subscription_id && hasFreeTrialAccess && freeTrialEndDate && new Date() >= freeTrialEndDate;
 
       return res.json({
         hasSubscription: !!user.subscription_id,
@@ -293,6 +312,7 @@ export default {
         cancelAtPeriodEnd: cancelAtPeriodEnd,
         isTrialing: isTrialing,
         hasAccess: hasAccess,
+        trialExpired: trialExpired || undefined,
       });
     } catch (error) {
       console.error("Erro ao obter status da assinatura:", error);

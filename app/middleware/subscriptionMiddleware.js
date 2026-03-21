@@ -21,7 +21,8 @@ module.exports = async (req, res, next) => {
         "subscription_id",
         "subscription_status",
         "subscription_start_date",
-        "subscription_end_date"
+        "subscription_end_date",
+        "created_at"
       )
       .where({ id: userId })
       .first();
@@ -30,8 +31,19 @@ module.exports = async (req, res, next) => {
       return res.status(404).json({ error: "Usuário não encontrado" });
     }
 
-    // Verificar se tem acesso (ativa, trialing ou cancelada mas ainda no período pago)
+    // Trial gratuito de 7 dias SEM cartão: usuário sem assinatura pode usar por 7 dias após o cadastro
+    const TRIAL_DAYS = 7;
+    let freeTrialEndDate = null;
+    if (!user.subscription_id && user.created_at) {
+      const start = new Date(user.created_at);
+      freeTrialEndDate = new Date(start);
+      freeTrialEndDate.setDate(freeTrialEndDate.getDate() + TRIAL_DAYS);
+    }
+    const isWithinFreeTrial = freeTrialEndDate && new Date() < freeTrialEndDate;
+
+    // Verificar se tem acesso (ativa, trialing, trial gratuito sem cartão, ou cancelada mas ainda no período pago)
     const hasAccess = 
+      isWithinFreeTrial ||
       user.subscription_status === "active" ||
       user.subscription_status === "trialing" ||
       (user.subscription_status === "canceled" &&
