@@ -17,13 +17,32 @@ const ALLOWED_LOGO_TYPES = ["image/jpeg", "image/png", "image/webp"];
 export default {
   async register(req, res, next) {
     try {
-      const { email, password, name, phone } = req.body;
-        
+      const {
+        email,
+        password,
+        name,
+        phone,
+        accept_lgpd_responsibility,
+        accept_terms_of_use,
+        accept_privacy_policy,
+      } = req.body;
+
       // Validação de campos obrigatórios
       if (!email || !password || !name || !phone) {
           return res.status(400).json({ 
             error: "Os campos nome, e-mail, telefone e senha são obrigatórios" 
           });
+      }
+
+      if (
+        accept_lgpd_responsibility !== true ||
+        accept_terms_of_use !== true ||
+        accept_privacy_policy !== true
+      ) {
+        return res.status(400).json({
+          error:
+            "É necessário aceitar a declaração de responsabilidade, os Termos de Uso e a Política de Privacidade para se cadastrar.",
+        });
       }
 
       // Validação de formato de email
@@ -56,13 +75,18 @@ export default {
       // Hash da senha
       const hashedPassword = bcrypt.hashSync(password, 10);
 
+      const acceptedAt = db.fn.now();
+
       // Insere o usuário e obtém o ID
       const [newUser] = await db("users")
         .insert({ 
           email: normalizedEmail, 
           password: hashedPassword, 
           name, 
-          phone
+          phone,
+          lgpd_responsibility_accepted_at: acceptedAt,
+          terms_of_use_accepted_at: acceptedAt,
+          privacy_policy_accepted_at: acceptedAt,
         })
         .returning("id");
 
